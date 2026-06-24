@@ -2,59 +2,70 @@
 """
 concert_sheets.py - helper for the concert-tracking scheduled task.
 
-Handles only the deterministic Google Sheets I/O. The web research (finding new
-concert announcements) is done by Claude at runtime via web search; this script
-does NOT search the web.
+Two independent jobs, both deterministic Google Sheets I/O (the web research is
+done by Claude at runtime):
 
-Auth (cloud-friendly): reads the FULL service-account JSON from the
-GOOGLE_SA_JSON environment variable, so nothing sensitive is committed to git.
-Target sheet: the SHEET_ID environment variable (the long id in the sheet URL:
-https://docs.google.com/spreadsheets/d/<SHEET_ID>/edit).
+  ARTISTS  -> "Schedule" tab: each artist's concerts, grouped alphabetically by
+              artist, sorted by date within the artist, a blank row between
+              artists, and an "Artist | No concerts" row for artists with none.
+  FESTIVALS-> "Festival Schedule" tab: info about the festivals named in the
+              "Festivals" input tab, independent of any lineup.
 
-Optional: SKIP_COUNTRIES = comma-separated country names to drop on input,
-e.g. "UK,United Kingdom,England,Scotland,Wales,Great Britain".
+Both output tabs are fully REWRITTEN each run: existing rows are read first,
+merged with new finds (dedup), then re-sorted and written back, so nothing is
+lost and a bad search run can't wipe data. Dedup is add-only (existing rows are
+never removed or overwritten).
+
+Auth (cloud-friendly): GOOGLE_SA_JSON env var holds the full service-account
+JSON. SHEET_ID env var holds the sheet id. Optional SKIP_COUNTRIES =
+comma-separated country names to drop on input (e.g. "UK,United Kingdom").
 
 Tabs:
-  "Artists"   - column A: artist names, one per row (optional header). REQUIRED.
-  "Festivals" - column A: festival names to track by name (OPTIONAL tab).
-  "Schedule"  - auto-created; appended to. Columns: see SCHEDULE_HEADERS.
-                A header row is added/repaired automatically if missing.
-  "Log"       - auto-created; one row per run with counts.
+  "Artists"          - INPUT, column A: artist names (optional header). REQUIRED.
+  "Festivals"        - INPUT, column A: festival names (optional tab).
+  "Schedule"         - OUTPUT, artist concerts. Auto-managed.
+  "Festival Schedule"- OUTPUT, festival info. Auto-managed.
+  "Log"              - one row per run.
 
 Usage:
   python concert_sheets.py state
-      -> prints JSON: {"artists":[...], "festivals":[...], "existing_keys":[...]}
-
+      -> {"artists":[...], "festivals":[...]}
   python concert_sheets.py append events.json
-      -> events.json: JSON array of event objects, e.g.
-         [{"artist","date","city","venue","country","event_type",
-           "status","on_sale","url"}]
-         date / on_sale = YYYY-MM-DD ; event_type = Solo | Gig | Festival ;
-         status = Announced | Presale | On sale | Sold out.
-         Dump EVERYTHING found (including shows not yet on sale); the script
-         dedups (by artist+date+venue), appends only new rows, writes a Log
-         row, and prints a summary.
+      -> rewrites "Schedule"; events = array of objects
+         {"artist","date","city","venue","country","event_type","status","on_sale","url"}
+  python concert_sheets.py append-festivals festivals.json
+      -> rewrites "Festival Schedule"; festivals = array of objects
+         {"festival","start","end","city","country","status","on_sale","url"}
 """
 
 import json
 import os
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 
 import gspread
 
 ARTISTS_TAB = "Artists"
-FESTIVALS_TAB = "Festivals"
+FESTIVALS_INPUT_TAB = "Festivals"
 SCHEDULE_TAB = "Schedule"
+FESTIVAL_OUTPUT_TAB = "Festival Schedule"
 LOG_TAB = "Log"
 
 SCHEDULE_HEADERS = ["Artist", "Date", "City", "Venue", "Country",
                     "Event Type", "Status", "On-Sale", "URL", "Added"]
-LOG_HEADERS = ["Run (UTC)", "Artists", "Festivals", "Found", "Added", "Skipped"]
+FESTIVAL_HEADERS = ["Festival", "Start", "End", "City", "Country",
+                    "Status", "On-Sale", "URL", "Added"]
+LOG_HEADERS = ["Run (UTC)", "Artists", "Festivals", "Found", "Added",
+               "Skipped", "New records (artists)"]
 
 _NAME_HEADER_CELLS = {"artist", "artists", "festival", "festivals", "name"}
+_DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d")
 
 
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
 def _client():
     raw = os.environ.get("GOOGLE_SA_JSON")
     if not raw:
@@ -78,6 +89,17 @@ def _skip_countries():
     return {c.strip().lower() for c in raw.split(",") if c.strip()}
 
 
+def _to_iso(s):
+    """Normalise a date cell to ISO YYYY-MM-DD, or None if it isn't a date."""
+    s = (s or "").strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
 def _read_names(ss, tab, required):
     try:
         ws = ss.worksheet(tab)
@@ -91,117 +113,257 @@ def _read_names(ss, tab, required):
     return names
 
 
-def _key(artist, d, venue):
-    return f"{artist.strip().lower()}|{d.strip()}|{venue.strip().lower()}"
-
-
-def _ensure_tab(ss, title, headers):
-    """Return the worksheet, creating it or repairing a missing header row."""
+def _get_or_create(ss, title, ncols):
     try:
-        ws = ss.worksheet(title)
+        return ss.worksheet(title)
     except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=title, rows=2000, cols=len(headers))
-        ws.append_row(headers, value_input_option="USER_ENTERED")
-        return ws
-    values = ws.get_all_values()
-    if not values:
-        ws.append_row(headers, value_input_option="USER_ENTERED")
-    elif not values[0] or values[0][0].strip().lower() != headers[0].lower():
-        # data present but first row is not the header -> insert one on top
-        ws.insert_row(headers, index=1, value_input_option="USER_ENTERED")
-    return ws
+        return ss.add_worksheet(title=title, rows=2000, cols=ncols)
 
 
-def _existing_keys(sched_ws):
-    """All dedup keys already in Schedule, header row excluded if present."""
-    keys = set()
-    for r in sched_ws.get_all_values():
-        if len(r) >= 4 and r[0].strip() and r[0].strip().lower() != "artist":
-            keys.add(_key(r[0], r[1], r[3]))
-    return keys
+def _cell(row, i):
+    return row[i].strip() if len(row) > i else ""
 
 
+def _today():
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+# --------------------------------------------------------------------------- #
+# state
+# --------------------------------------------------------------------------- #
 def cmd_state():
     ss = _open()
     artists = _read_names(ss, ARTISTS_TAB, required=True)
-    festivals = _read_names(ss, FESTIVALS_TAB, required=False)
-    sched = _ensure_tab(ss, SCHEDULE_TAB, SCHEDULE_HEADERS)
-    keys = sorted(_existing_keys(sched))
-    print(json.dumps(
-        {"artists": artists, "festivals": festivals, "existing_keys": keys},
-        ensure_ascii=False,
-    ))
+    festivals = _read_names(ss, FESTIVALS_INPUT_TAB, required=False)
+    print(json.dumps({"artists": artists, "festivals": festivals}, ensure_ascii=False))
+
+
+# --------------------------------------------------------------------------- #
+# concerts  ->  Schedule
+# --------------------------------------------------------------------------- #
+def _read_concerts(ws):
+    out = []
+    for r in ws.get_all_values():
+        artist = _cell(r, 0)
+        if not artist or artist.lower() == "artist":
+            continue
+        iso = _to_iso(_cell(r, 1))
+        if not iso:               # "No concerts" / blank rows
+            continue
+        out.append({
+            "artist": artist, "date": iso, "city": _cell(r, 2),
+            "venue": _cell(r, 3), "country": _cell(r, 4),
+            "event_type": _cell(r, 5), "status": _cell(r, 6),
+            "on_sale": _cell(r, 7), "url": _cell(r, 8), "added": _cell(r, 9),
+        })
+    return out
+
+
+def _concert_key(e):
+    return f"{e['artist'].strip().lower()}|{e['date'].strip()}|{e['venue'].strip().lower()}"
 
 
 def cmd_append(path):
     with open(path, encoding="utf-8") as f:
-        events = json.load(f)
-    if not isinstance(events, list):
+        incoming = json.load(f)
+    if not isinstance(incoming, list):
         sys.exit("error: events file must contain a JSON array")
 
     ss = _open()
-    sched = _ensure_tab(ss, SCHEDULE_TAB, SCHEDULE_HEADERS)
-    existing = _existing_keys(sched)
+    sched = _get_or_create(ss, SCHEDULE_TAB, len(SCHEDULE_HEADERS))
+    existing = _read_concerts(sched)
+    keys = {_concert_key(e) for e in existing}
     skip = _skip_countries()
+    today = _today()
 
-    new_rows = []
-    added_events = []
+    added = []
     skipped = 0
-    today = datetime.now(timezone.utc).date().isoformat()
-
-    for e in events:
-        artist = str(e.get("artist", "")).strip()
-        d = str(e.get("date", "")).strip()
-        venue = str(e.get("venue", "")).strip()
-        country = str(e.get("country", "")).strip()
-        if not artist or not d:
+    for e in incoming:
+        ev = {
+            "artist": str(e.get("artist", "")).strip(),
+            "date": _to_iso(str(e.get("date", ""))) or "",
+            "city": str(e.get("city", "")).strip(),
+            "venue": str(e.get("venue", "")).strip(),
+            "country": str(e.get("country", "")).strip(),
+            "event_type": str(e.get("event_type", e.get("type", ""))).strip(),
+            "status": str(e.get("status", "")).strip(),
+            "on_sale": str(e.get("on_sale", e.get("onsale", ""))).strip(),
+            "url": str(e.get("url", "")).strip(),
+            "added": today,
+        }
+        if not ev["artist"] or not ev["date"]:
             skipped += 1
             continue
-        if skip and country.lower() in skip:
+        if skip and ev["country"].lower() in skip:
             skipped += 1
             continue
-        k = _key(artist, d, venue)
-        if k in existing:
+        k = _concert_key(ev)
+        if k in keys:
             skipped += 1
             continue
-        existing.add(k)
-        new_rows.append([
-            artist,
-            d,
-            str(e.get("city", "")).strip(),
-            venue,
-            country,
-            str(e.get("event_type", e.get("type", ""))).strip(),
-            str(e.get("status", "")).strip(),
-            str(e.get("on_sale", e.get("onsale", ""))).strip(),
-            str(e.get("url", "")).strip(),
-            today,
-        ])
-        added_events.append(e)
+        keys.add(k)
+        existing.append(ev)
+        added.append(ev)
 
-    if new_rows:
-        sched.append_rows(new_rows, value_input_option="USER_ENTERED")
+    # canonical artist names (Artists tab spelling wins)
+    artists_list = _read_names(ss, ARTISTS_TAB, required=False)
+    canon = {}
+    for a in artists_list:
+        canon.setdefault(a.lower(), a)
+    for e in existing:
+        canon.setdefault(e["artist"].lower(), e["artist"])
 
-    # write one Log row per run
-    artists = _read_names(ss, ARTISTS_TAB, required=False)
-    festivals = _read_names(ss, FESTIVALS_TAB, required=False)
-    log = _ensure_tab(ss, LOG_TAB, LOG_HEADERS)
-    run_ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    groups = defaultdict(list)
+    for e in existing:
+        groups[e["artist"].lower()].append(e)
+
+    order = sorted(set(groups) | {a.lower() for a in artists_list},
+                   key=lambda k: canon.get(k, k).lower())
+
+    rows = [SCHEDULE_HEADERS]
+    for k in order:
+        name = canon.get(k, k)
+        evs = sorted(groups.get(k, []), key=lambda e: e["date"])
+        if evs:
+            for e in evs:
+                rows.append([name, e["date"], e["city"], e["venue"], e["country"],
+                             e["event_type"], e["status"], e["on_sale"], e["url"],
+                             e["added"]])
+        else:
+            rows.append([name, "No concerts", "", "", "", "", "", "", "", ""])
+        rows.append([""])          # blank separator
+    if rows and rows[-1] == [""]:
+        rows.pop()
+
+    sched.clear()
+    sched.append_rows(rows, value_input_option="USER_ENTERED")
+
+    # Log
+    new_artists = sorted({canon.get(e["artist"].lower(), e["artist"]) for e in added},
+                         key=str.lower)
+    note = f"added {len(added)}: " + ", ".join(new_artists) if added else "0"
+    log = _get_or_create(ss, LOG_TAB, len(LOG_HEADERS))
+    if not log.get_all_values():
+        log.append_row(LOG_HEADERS, value_input_option="USER_ENTERED")
     log.append_row(
-        [run_ts, len(artists), len(festivals), len(events), len(new_rows), skipped],
+        [datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         len(artists_list), len(_read_names(ss, FESTIVALS_INPUT_TAB, required=False)),
+         len(incoming), len(added), skipped, note],
         value_input_option="USER_ENTERED",
     )
 
     print(json.dumps(
-        {"found": len(events), "added": len(new_rows), "skipped": skipped,
-         "added_events": added_events},
+        {"found": len(incoming), "added": len(added), "skipped": skipped,
+         "new_artists": new_artists, "added_events": added},
         ensure_ascii=False,
     ))
 
 
+# --------------------------------------------------------------------------- #
+# festivals  ->  Festival Schedule
+# --------------------------------------------------------------------------- #
+def _read_festivals(ws):
+    out = []
+    for r in ws.get_all_values():
+        name = _cell(r, 0)
+        if not name or name.lower() in ("festival", "festivals"):
+            continue
+        iso = _to_iso(_cell(r, 1))
+        if not iso:                # "No info found" / blank rows
+            continue
+        out.append({
+            "festival": name, "start": iso, "end": _to_iso(_cell(r, 2)) or "",
+            "city": _cell(r, 3), "country": _cell(r, 4), "status": _cell(r, 5),
+            "on_sale": _cell(r, 6), "url": _cell(r, 7), "added": _cell(r, 8),
+        })
+    return out
+
+
+def _festival_key(e):
+    return f"{e['festival'].strip().lower()}|{e['start'].strip()}"
+
+
+def cmd_append_festivals(path):
+    with open(path, encoding="utf-8") as f:
+        incoming = json.load(f)
+    if not isinstance(incoming, list):
+        sys.exit("error: festivals file must contain a JSON array")
+
+    ss = _open()
+    fs = _get_or_create(ss, FESTIVAL_OUTPUT_TAB, len(FESTIVAL_HEADERS))
+    existing = _read_festivals(fs)
+    keys = {_festival_key(e) for e in existing}
+    skip = _skip_countries()
+    today = _today()
+
+    added = []
+    skipped = 0
+    for e in incoming:
+        start = _to_iso(str(e.get("start", e.get("date", "")))) or ""
+        ev = {
+            "festival": str(e.get("festival", e.get("name", ""))).strip(),
+            "start": start,
+            "end": _to_iso(str(e.get("end", ""))) or start,
+            "city": str(e.get("city", "")).strip(),
+            "country": str(e.get("country", "")).strip(),
+            "status": str(e.get("status", "")).strip(),
+            "on_sale": str(e.get("on_sale", e.get("onsale", ""))).strip(),
+            "url": str(e.get("url", "")).strip(),
+            "added": today,
+        }
+        if not ev["festival"] or not ev["start"]:
+            skipped += 1
+            continue
+        if skip and ev["country"].lower() in skip:
+            skipped += 1
+            continue
+        k = _festival_key(ev)
+        if k in keys:
+            skipped += 1
+            continue
+        keys.add(k)
+        existing.append(ev)
+        added.append(ev)
+
+    names = _read_names(ss, FESTIVALS_INPUT_TAB, required=False)
+    canon = {}
+    for n in names:
+        canon.setdefault(n.lower(), n)
+    for e in existing:
+        canon.setdefault(e["festival"].lower(), e["festival"])
+
+    groups = defaultdict(list)
+    for e in existing:
+        groups[e["festival"].lower()].append(e)
+
+    order = sorted(set(groups) | {n.lower() for n in names},
+                   key=lambda k: canon.get(k, k).lower())
+
+    rows = [FESTIVAL_HEADERS]
+    for k in order:
+        name = canon.get(k, k)
+        evs = sorted(groups.get(k, []), key=lambda e: e["start"])
+        if evs:
+            for e in evs:
+                rows.append([name, e["start"], e["end"], e["city"], e["country"],
+                             e["status"], e["on_sale"], e["url"], e["added"]])
+        else:
+            rows.append([name, "No info found", "", "", "", "", "", "", ""])
+
+    fs.clear()
+    fs.append_rows(rows, value_input_option="USER_ENTERED")
+
+    print(json.dumps(
+        {"found": len(incoming), "added": len(added), "skipped": skipped,
+         "added_festivals": added},
+        ensure_ascii=False,
+    ))
+
+
+# --------------------------------------------------------------------------- #
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: concert_sheets.py [state | append <events.json>]")
+        sys.exit("usage: concert_sheets.py [state | append <f> | append-festivals <f>]")
     cmd = sys.argv[1]
     if cmd == "state":
         cmd_state()
@@ -209,6 +371,10 @@ def main():
         if len(sys.argv) < 3:
             sys.exit("usage: concert_sheets.py append <events.json>")
         cmd_append(sys.argv[2])
+    elif cmd == "append-festivals":
+        if len(sys.argv) < 3:
+            sys.exit("usage: concert_sheets.py append-festivals <festivals.json>")
+        cmd_append_festivals(sys.argv[2])
     else:
         sys.exit(f"error: unknown command '{cmd}'")
 
