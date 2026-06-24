@@ -1,0 +1,18 @@
+[
+  {"artist":"Muse","date":"2026-11-12","city":"Manchester","venue":"Co-op Live","country":"UK","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-13","city":"Manchester","venue":"Co-op Live","country":"UK","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-15","city":"London","venue":"The O2","country":"UK","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-16","city":"London","venue":"The O2","country":"UK","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-18","city":"Berlin","venue":"Uber Arena","country":"Germany","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-20","city":"Milan","venue":"Unipol Dome","country":"Italy","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-21","city":"Milan","venue":"Unipol Dome","country":"Italy","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-24","city":"Düsseldorf","venue":"PSD Bank Dome","country":"Germany","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-25","city":"Düsseldorf","venue":"PSD Bank Dome","country":"Germany","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-27","city":"Paris","venue":"La Défense Arena","country":"France","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-11-29","city":"Amsterdam","venue":"Ziggo Dome","country":"Netherlands","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.ticketmaster.nl/artist/muse-tickets/26326"},
+  {"artist":"Muse","date":"2026-11-30","city":"Amsterdam","venue":"Ziggo Dome","country":"Netherlands","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.ticketmaster.nl/artist/muse-tickets/26326"},
+  {"artist":"Muse","date":"2026-12-03","city":"Montpellier","venue":"Sud de France Arena","country":"France","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-12-04","city":"Montpellier","venue":"Sud de France Arena","country":"France","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-12-07","city":"Zurich","venue":"AG Hallenstadion","country":"Switzerland","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"},
+  {"artist":"Muse","date":"2026-12-08","city":"Zurich","venue":"AG Hallenstadion","country":"Switzerland","event_type":"Solo","status":"On sale","on_sale":"2026-06-19","url":"https://www.muse.mu/tour"}
+]
