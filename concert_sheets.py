@@ -17,8 +17,8 @@ lost and a bad search run can't wipe data. Dedup is add-only (existing rows are
 never removed or overwritten).
 
 Auth (cloud-friendly): GOOGLE_SA_JSON env var holds the full service-account
-JSON. SHEET_ID env var holds the sheet id. Optional SKIP_COUNTRIES =
-comma-separated country names to drop on input (e.g. "UK,United Kingdom").
+JSON. SHEET_ID env var holds the sheet id. Excluded countries are hardcoded in
+the SKIP_COUNTRIES list below (no env var needed).
 
 Tabs:
   "Artists"          - INPUT, column A: artist names (optional header). REQUIRED.
@@ -84,9 +84,39 @@ def _open():
     return _client().open_by_key(sheet_id)
 
 
+# common ways the same country gets written -> one canonical lower-case form
+_COUNTRY_ALIASES = {
+    "usa": "united states", "us": "united states", "america": "united states",
+    "united states of america": "united states",
+    "uk": "united kingdom", "great britain": "united kingdom",
+    "britain": "united kingdom", "england": "united kingdom",
+    "scotland": "united kingdom", "wales": "united kingdom",
+    "northern ireland": "united kingdom",
+    "uae": "united arab emirates",
+    "czechia": "czech republic",
+    "holland": "netherlands",
+    "republic of korea": "south korea", "korea": "south korea",
+    "russian federation": "russia",
+}
+
+
+def _norm_country(s):
+    """Lower-case, drop dots, strip a leading 'the', then map known aliases."""
+    s = (s or "").strip().lower().replace(".", "")
+    s = " ".join(s.split())          # collapse internal whitespace
+    if s.startswith("the "):
+        s = s[4:]
+    return _COUNTRY_ALIASES.get(s, s)
+
+
+SKIP_COUNTRIES = [
+    "United Kingdom", "United States", "Canada", "Australia", "New Zealand",
+    "Japan", "China", "Taiwan", "India", "Ireland",
+]
+
+
 def _skip_countries():
-    raw = os.environ.get("SKIP_COUNTRIES", "")
-    return {c.strip().lower() for c in raw.split(",") if c.strip()}
+    return {_norm_country(c) for c in SKIP_COUNTRIES}
 
 
 def _to_iso(s):
@@ -205,7 +235,7 @@ def cmd_append(path):
         if not ev["artist"] or not ev["date"]:
             skipped += 1
             continue
-        if skip and ev["country"].lower() in skip:
+        if skip and _norm_country(ev["country"]) in skip:
             skipped += 1
             continue
         k = _concert_key(ev)
@@ -334,7 +364,7 @@ def cmd_append_festivals(path):
         if not ev["festival"] or not ev["start"]:
             skipped += 1
             continue
-        if skip and ev["country"].lower() in skip:
+        if skip and _norm_country(ev["country"]) in skip:
             skipped += 1
             continue
         k = _festival_key(ev)
