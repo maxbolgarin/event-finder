@@ -101,15 +101,26 @@ def _to_iso(s):
 
 
 def _read_names(ss, tab, required):
+    """Names from column A, stopping at the FIRST blank row.
+
+    A blank row acts as a separator: everything below it (e.g. artists you have
+    already bought tickets for) stays in the sheet but is excluded from
+    monitoring.
+    """
     try:
         ws = ss.worksheet(tab)
     except gspread.WorksheetNotFound:
         if required:
             sys.exit(f"error: tab '{tab}' not found")
         return []
-    names = [c.strip() for c in ws.col_values(1) if c.strip()]
-    if names and names[0].lower() in _NAME_HEADER_CELLS:
-        names = names[1:]
+    col = ws.col_values(1)
+    if col and col[0].strip().lower() in _NAME_HEADER_CELLS:
+        col = col[1:]
+    names = []
+    for c in col:
+        if not c.strip():          # first blank row -> stop
+            break
+        names.append(c.strip())
     return names
 
 
@@ -217,8 +228,17 @@ def cmd_append(path):
     for e in existing:
         groups[e["artist"].lower()].append(e)
 
-    order = sorted(set(groups) | {a.lower() for a in artists_list},
-                   key=lambda k: canon.get(k, k).lower())
+    # keep the Artists-tab order; append any event-only artists at the end
+    order, seen = [], set()
+    for a in artists_list:
+        k = a.lower()
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
+    for k in sorted(groups):
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
 
     rows = [SCHEDULE_HEADERS]
     for k in order:
@@ -336,8 +356,17 @@ def cmd_append_festivals(path):
     for e in existing:
         groups[e["festival"].lower()].append(e)
 
-    order = sorted(set(groups) | {n.lower() for n in names},
-                   key=lambda k: canon.get(k, k).lower())
+    # keep the Festivals-tab order; append any extra festivals at the end
+    order, seen = [], set()
+    for n in names:
+        k = n.lower()
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
+    for k in sorted(groups):
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
 
     rows = [FESTIVAL_HEADERS]
     for k in order:
