@@ -14,7 +14,7 @@ with new finds (dedup), then re-sorted and written back, so nothing is lost and
 a bad search run can't wipe data. Dedup is add-only.
 
 Country handling: the script applies the country filter (SKIP_COUNTRIES) as a
-backstop. Artists with no concerts in the table get a "No Concerts At All" row;
+backstop. Artists with no concerts in the table get a "No Concerts" row;
 with --no-empty (the NL run) no placeholder rows are written at all.
 
 Auth: GOOGLE_SA_JSON env var = full service-account JSON; SHEET_ID env var =
@@ -55,7 +55,7 @@ FESTIVAL_HEADERS = ["Festival", "Start", "End", "City", "Country",
 LOG_HEADERS = ["Run (UTC)", "Artists", "Festivals", "Found", "Added",
                "Skipped", "New records (artists)"]
 
-PH_NONE_FOUND = "No Concerts At All"        # artist has no concerts in the table
+PH_NONE_FOUND = "No Concerts"        # artist has no concerts in the table
 
 _NAME_HEADER_CELLS = {"artist", "artists", "festival", "festivals", "name"}
 _DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d")

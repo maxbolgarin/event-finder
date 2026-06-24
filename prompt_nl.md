@@ -23,3 +23,7 @@ Env: GOOGLE_SA_JSON and SHEET_ID (from the environment, not .env).
 4. python concert_sheets.py append events.json --schedule "Schedule NL" --only Netherlands --no-empty
 5. Summarize to me in chat: the NEWLY added shows (from "added_events"), with
    on-sale status up top. If nothing new: "No new NL announcements."
+
+Run all searches yourself within THIS single agent, sequentially or in small
+batches. Do NOT spawn parallel subagents or start a dynamic workflow - keep
+usage low; this is an unattended daily task.
