@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Intermediate data files generated during monitoring runs
+events.json
+festivals.json
