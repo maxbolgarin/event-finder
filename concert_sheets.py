@@ -1,43 +1,41 @@
 #!/usr/bin/env python3
 """
-concert_sheets.py - helper for the concert-tracking scheduled task.
+concert_sheets.py - helper for the concert-tracking scheduled tasks.
 
-Two independent jobs, both deterministic Google Sheets I/O (the web research is
-done by Claude at runtime):
+Deterministic Google Sheets I/O for two job types (the web research is done by
+Claude at runtime). Input/output tab names are configurable so several routines
+can share this one script - e.g. a frequent NL-only watcher writing to one tab,
+and a full worldwide run writing to another.
 
-  ARTISTS  -> "Schedule" tab: each artist's concerts, grouped alphabetically by
-              artist, sorted by date within the artist, a blank row between
-              artists, and an "Artist | No concerts" row for artists with none.
-  FESTIVALS-> "Festival Schedule" tab: info about the festivals named in the
-              "Festivals" input tab, independent of any lineup.
+  ARTISTS   -> a schedule tab: each artist's concerts, grouped in the SAME order
+               as the input artists tab, sorted by date within an artist, a
+               blank row between artists, and an "Artist | No concerts" row for
+               artists with none.
+  FESTIVALS -> a festival tab: info about the festivals named in the input tab.
 
-Both output tabs are fully REWRITTEN each run: existing rows are read first,
-merged with new finds (dedup), then re-sorted and written back, so nothing is
-lost and a bad search run can't wipe data. Dedup is add-only (existing rows are
-never removed or overwritten).
+Output tabs are fully REWRITTEN each run: existing rows are read first, merged
+with new finds (dedup), then re-sorted and written back, so nothing is lost and
+a bad search run can't wipe data. Dedup is add-only.
 
-Auth (cloud-friendly): GOOGLE_SA_JSON env var holds the full service-account
-JSON. SHEET_ID env var holds the sheet id. Excluded countries are hardcoded in
-the SKIP_COUNTRIES list below (no env var needed).
+Auth: GOOGLE_SA_JSON env var = full service-account JSON; SHEET_ID env var =
+sheet id. Excluded countries are hardcoded in SKIP_COUNTRIES below.
 
-Tabs:
-  "Artists"          - INPUT, column A: artist names (optional header). REQUIRED.
-  "Festivals"        - INPUT, column A: festival names (optional tab).
-  "Schedule"         - OUTPUT, artist concerts. Auto-managed.
-  "Festival Schedule"- OUTPUT, festival info. Auto-managed.
-  "Log"              - one row per run.
-
-Usage:
-  python concert_sheets.py state
+Usage (defaults in brackets):
+  python concert_sheets.py state [--artists Artists] [--festivals Festivals]
       -> {"artists":[...], "festivals":[...]}
-  python concert_sheets.py append events.json
-      -> rewrites "Schedule"; events = array of objects
-         {"artist","date","city","venue","country","event_type","status","on_sale","url"}
-  python concert_sheets.py append-festivals festivals.json
-      -> rewrites "Festival Schedule"; festivals = array of objects
-         {"festival","start","end","city","country","status","on_sale","url"}
+  python concert_sheets.py append <events.json>
+        [--artists Artists] [--schedule Schedule] [--only "Netherlands"]
+      -> rewrites the schedule tab. --only = comma-sep allowlist of countries
+         (keep ONLY these); omit it to use the worldwide SKIP_COUNTRIES filter.
+  python concert_sheets.py append-festivals <festivals.json>
+        [--festivals-tab Festivals] [--out "Festival Schedule"]
+      -> rewrites the festival tab.
+
+Event object   : {"artist","date","city","venue","country","event_type","status","on_sale","url"}
+Festival object: {"festival","start","end","city","country","status","on_sale","url"}
 """
 
+import argparse
 import json
 import os
 import sys
@@ -46,6 +44,7 @@ from datetime import datetime, timezone
 
 import gspread
 
+# default tab names (overridable per command)
 ARTISTS_TAB = "Artists"
 FESTIVALS_INPUT_TAB = "Festivals"
 SCHEDULE_TAB = "Schedule"
@@ -61,6 +60,28 @@ LOG_HEADERS = ["Run (UTC)", "Artists", "Festivals", "Found", "Added",
 
 _NAME_HEADER_CELLS = {"artist", "artists", "festival", "festivals", "name"}
 _DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d")
+
+# Countries excluded worldwide: where a Russian passport needs a visa/eVisa AND
+# that are outside the EU/Schengen area (which I enter freely as a NL resident).
+# Matched case/spelling-insensitively, so canonical names below are enough.
+SKIP_COUNTRIES = [
+    "United Kingdom", "United States", "Canada", "Australia", "New Zealand",
+    "Japan", "China", "Taiwan", "India", "Ireland",
+]
+
+_COUNTRY_ALIASES = {
+    "usa": "united states", "us": "united states", "america": "united states",
+    "united states of america": "united states",
+    "uk": "united kingdom", "great britain": "united kingdom",
+    "britain": "united kingdom", "england": "united kingdom",
+    "scotland": "united kingdom", "wales": "united kingdom",
+    "northern ireland": "united kingdom",
+    "uae": "united arab emirates",
+    "czechia": "czech republic",
+    "holland": "netherlands",
+    "republic of korea": "south korea", "korea": "south korea",
+    "russian federation": "russia",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -84,43 +105,24 @@ def _open():
     return _client().open_by_key(sheet_id)
 
 
-# common ways the same country gets written -> one canonical lower-case form
-_COUNTRY_ALIASES = {
-    "usa": "united states", "us": "united states", "america": "united states",
-    "united states of america": "united states",
-    "uk": "united kingdom", "great britain": "united kingdom",
-    "britain": "united kingdom", "england": "united kingdom",
-    "scotland": "united kingdom", "wales": "united kingdom",
-    "northern ireland": "united kingdom",
-    "uae": "united arab emirates",
-    "czechia": "czech republic",
-    "holland": "netherlands",
-    "republic of korea": "south korea", "korea": "south korea",
-    "russian federation": "russia",
-}
-
-
 def _norm_country(s):
     """Lower-case, drop dots, strip a leading 'the', then map known aliases."""
     s = (s or "").strip().lower().replace(".", "")
-    s = " ".join(s.split())          # collapse internal whitespace
+    s = " ".join(s.split())
     if s.startswith("the "):
         s = s[4:]
     return _COUNTRY_ALIASES.get(s, s)
 
 
-SKIP_COUNTRIES = [
-    "United Kingdom", "United States", "Canada", "Australia", "New Zealand",
-    "Japan", "China", "Taiwan", "India", "Ireland",
-]
-
-
-def _skip_countries():
+def _skip_set():
     return {_norm_country(c) for c in SKIP_COUNTRIES}
 
 
+def _allow_set(raw):
+    return {_norm_country(c) for c in (raw or "").split(",") if c.strip()}
+
+
 def _to_iso(s):
-    """Normalise a date cell to ISO YYYY-MM-DD, or None if it isn't a date."""
     s = (s or "").strip()
     for fmt in _DATE_FORMATS:
         try:
@@ -131,12 +133,8 @@ def _to_iso(s):
 
 
 def _read_names(ss, tab, required):
-    """Names from column A, stopping at the FIRST blank row.
-
-    A blank row acts as a separator: everything below it (e.g. artists you have
-    already bought tickets for) stays in the sheet but is excluded from
-    monitoring.
-    """
+    """Names from column A, stopping at the FIRST blank row (a blank row is a
+    separator: everything below it is kept in the sheet but not monitored)."""
     try:
         ws = ss.worksheet(tab)
     except gspread.WorksheetNotFound:
@@ -148,7 +146,7 @@ def _read_names(ss, tab, required):
         col = col[1:]
     names = []
     for c in col:
-        if not c.strip():          # first blank row -> stop
+        if not c.strip():
             break
         names.append(c.strip())
     return names
@@ -169,18 +167,25 @@ def _today():
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def _country_ok(country, allow, skip):
+    norm = _norm_country(country)
+    if allow:
+        return norm in allow
+    return norm not in skip
+
+
 # --------------------------------------------------------------------------- #
 # state
 # --------------------------------------------------------------------------- #
-def cmd_state():
+def cmd_state(artists_tab, festivals_tab):
     ss = _open()
-    artists = _read_names(ss, ARTISTS_TAB, required=True)
-    festivals = _read_names(ss, FESTIVALS_INPUT_TAB, required=False)
+    artists = _read_names(ss, artists_tab, required=True)
+    festivals = _read_names(ss, festivals_tab, required=False)
     print(json.dumps({"artists": artists, "festivals": festivals}, ensure_ascii=False))
 
 
 # --------------------------------------------------------------------------- #
-# concerts  ->  Schedule
+# concerts
 # --------------------------------------------------------------------------- #
 def _read_concerts(ws):
     out = []
@@ -189,7 +194,7 @@ def _read_concerts(ws):
         if not artist or artist.lower() == "artist":
             continue
         iso = _to_iso(_cell(r, 1))
-        if not iso:               # "No concerts" / blank rows
+        if not iso:
             continue
         out.append({
             "artist": artist, "date": iso, "city": _cell(r, 2),
@@ -204,17 +209,18 @@ def _concert_key(e):
     return f"{e['artist'].strip().lower()}|{e['date'].strip()}|{e['venue'].strip().lower()}"
 
 
-def cmd_append(path):
+def cmd_append(path, artists_tab, schedule_tab, only_raw):
     with open(path, encoding="utf-8") as f:
         incoming = json.load(f)
     if not isinstance(incoming, list):
         sys.exit("error: events file must contain a JSON array")
 
     ss = _open()
-    sched = _get_or_create(ss, SCHEDULE_TAB, len(SCHEDULE_HEADERS))
+    sched = _get_or_create(ss, schedule_tab, len(SCHEDULE_HEADERS))
     existing = _read_concerts(sched)
     keys = {_concert_key(e) for e in existing}
-    skip = _skip_countries()
+    skip = _skip_set()
+    allow = _allow_set(only_raw)
     today = _today()
 
     added = []
@@ -235,7 +241,7 @@ def cmd_append(path):
         if not ev["artist"] or not ev["date"]:
             skipped += 1
             continue
-        if skip and _norm_country(ev["country"]) in skip:
+        if not _country_ok(ev["country"], allow, skip):
             skipped += 1
             continue
         k = _concert_key(ev)
@@ -246,8 +252,7 @@ def cmd_append(path):
         existing.append(ev)
         added.append(ev)
 
-    # canonical artist names (Artists tab spelling wins)
-    artists_list = _read_names(ss, ARTISTS_TAB, required=False)
+    artists_list = _read_names(ss, artists_tab, required=False)
     canon = {}
     for a in artists_list:
         canon.setdefault(a.lower(), a)
@@ -258,7 +263,7 @@ def cmd_append(path):
     for e in existing:
         groups[e["artist"].lower()].append(e)
 
-    # keep the Artists-tab order; append any event-only artists at the end
+    # keep the artists-tab order; append any event-only artists at the end
     order, seen = [], set()
     for a in artists_list:
         k = a.lower()
@@ -281,17 +286,17 @@ def cmd_append(path):
                              e["added"]])
         else:
             rows.append([name, "No concerts", "", "", "", "", "", "", "", ""])
-        rows.append([""])          # blank separator
+        rows.append([""])
     if rows and rows[-1] == [""]:
         rows.pop()
 
     sched.clear()
     sched.append_rows(rows, value_input_option="USER_ENTERED")
 
-    # Log
     new_artists = sorted({canon.get(e["artist"].lower(), e["artist"]) for e in added},
                          key=str.lower)
-    note = f"added {len(added)}: " + ", ".join(new_artists) if added else "0"
+    note = f"[{schedule_tab}] " + (f"added {len(added)}: " + ", ".join(new_artists)
+                                   if added else "0")
     log = _get_or_create(ss, LOG_TAB, len(LOG_HEADERS))
     if not log.get_all_values():
         log.append_row(LOG_HEADERS, value_input_option="USER_ENTERED")
@@ -303,14 +308,14 @@ def cmd_append(path):
     )
 
     print(json.dumps(
-        {"found": len(incoming), "added": len(added), "skipped": skipped,
-         "new_artists": new_artists, "added_events": added},
+        {"schedule_tab": schedule_tab, "found": len(incoming), "added": len(added),
+         "skipped": skipped, "new_artists": new_artists, "added_events": added},
         ensure_ascii=False,
     ))
 
 
 # --------------------------------------------------------------------------- #
-# festivals  ->  Festival Schedule
+# festivals
 # --------------------------------------------------------------------------- #
 def _read_festivals(ws):
     out = []
@@ -319,7 +324,7 @@ def _read_festivals(ws):
         if not name or name.lower() in ("festival", "festivals"):
             continue
         iso = _to_iso(_cell(r, 1))
-        if not iso:                # "No info found" / blank rows
+        if not iso:
             continue
         out.append({
             "festival": name, "start": iso, "end": _to_iso(_cell(r, 2)) or "",
@@ -333,17 +338,17 @@ def _festival_key(e):
     return f"{e['festival'].strip().lower()}|{e['start'].strip()}"
 
 
-def cmd_append_festivals(path):
+def cmd_append_festivals(path, festivals_tab, out_tab):
     with open(path, encoding="utf-8") as f:
         incoming = json.load(f)
     if not isinstance(incoming, list):
         sys.exit("error: festivals file must contain a JSON array")
 
     ss = _open()
-    fs = _get_or_create(ss, FESTIVAL_OUTPUT_TAB, len(FESTIVAL_HEADERS))
+    fs = _get_or_create(ss, out_tab, len(FESTIVAL_HEADERS))
     existing = _read_festivals(fs)
     keys = {_festival_key(e) for e in existing}
-    skip = _skip_countries()
+    skip = _skip_set()
     today = _today()
 
     added = []
@@ -364,7 +369,7 @@ def cmd_append_festivals(path):
         if not ev["festival"] or not ev["start"]:
             skipped += 1
             continue
-        if skip and _norm_country(ev["country"]) in skip:
+        if _norm_country(ev["country"]) in skip:
             skipped += 1
             continue
         k = _festival_key(ev)
@@ -375,7 +380,7 @@ def cmd_append_festivals(path):
         existing.append(ev)
         added.append(ev)
 
-    names = _read_names(ss, FESTIVALS_INPUT_TAB, required=False)
+    names = _read_names(ss, festivals_tab, required=False)
     canon = {}
     for n in names:
         canon.setdefault(n.lower(), n)
@@ -386,7 +391,6 @@ def cmd_append_festivals(path):
     for e in existing:
         groups[e["festival"].lower()].append(e)
 
-    # keep the Festivals-tab order; append any extra festivals at the end
     order, seen = [], set()
     for n in names:
         k = n.lower()
@@ -413,29 +417,39 @@ def cmd_append_festivals(path):
     fs.append_rows(rows, value_input_option="USER_ENTERED")
 
     print(json.dumps(
-        {"found": len(incoming), "added": len(added), "skipped": skipped,
-         "added_festivals": added},
+        {"out_tab": out_tab, "found": len(incoming), "added": len(added),
+         "skipped": skipped, "added_festivals": added},
         ensure_ascii=False,
     ))
 
 
 # --------------------------------------------------------------------------- #
 def main():
-    if len(sys.argv) < 2:
-        sys.exit("usage: concert_sheets.py [state | append <f> | append-festivals <f>]")
-    cmd = sys.argv[1]
-    if cmd == "state":
-        cmd_state()
-    elif cmd == "append":
-        if len(sys.argv) < 3:
-            sys.exit("usage: concert_sheets.py append <events.json>")
-        cmd_append(sys.argv[2])
-    elif cmd == "append-festivals":
-        if len(sys.argv) < 3:
-            sys.exit("usage: concert_sheets.py append-festivals <festivals.json>")
-        cmd_append_festivals(sys.argv[2])
-    else:
-        sys.exit(f"error: unknown command '{cmd}'")
+    p = argparse.ArgumentParser(description="Concert tracker sheets helper")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("state")
+    s.add_argument("--artists", default=ARTISTS_TAB)
+    s.add_argument("--festivals", default=FESTIVALS_INPUT_TAB)
+
+    a = sub.add_parser("append")
+    a.add_argument("events")
+    a.add_argument("--artists", default=ARTISTS_TAB)
+    a.add_argument("--schedule", default=SCHEDULE_TAB)
+    a.add_argument("--only", default="", help="comma-sep allowlist of countries")
+
+    f = sub.add_parser("append-festivals")
+    f.add_argument("file")
+    f.add_argument("--festivals-tab", default=FESTIVALS_INPUT_TAB)
+    f.add_argument("--out", default=FESTIVAL_OUTPUT_TAB)
+
+    args = p.parse_args()
+    if args.cmd == "state":
+        cmd_state(args.artists, args.festivals)
+    elif args.cmd == "append":
+        cmd_append(args.events, args.artists, args.schedule, args.only)
+    elif args.cmd == "append-festivals":
+        cmd_append_festivals(args.file, args.festivals_tab, args.out)
 
 
 if __name__ == "__main__":
