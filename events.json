@@ -1,0 +1,145 @@
+[
+  {
+    "artist": "Oasis",
+    "date": "2026-06-28",
+    "city": "Amsterdam",
+    "venue": "Johan Cruyff Arena",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://www.ticketbande.co.uk/concert-tickets/oasis/1081717"
+  },
+  {
+    "artist": "Lamb of God",
+    "date": "2026-08-14",
+    "city": "Eindhoven",
+    "venue": "Dynamo Metalfest",
+    "country": "Netherlands",
+    "event_type": "Festival",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://dynamo-metalfest.nl/line-up/"
+  },
+  {
+    "artist": "Poppy",
+    "date": "2026-09-22",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://www.eventim.nl/event/evanescence-ziggo-dome-20998047/"
+  },
+  {
+    "artist": "Devin Townsend",
+    "date": "2026-09-29",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://arrowlordsofmetal.nl/devin-townsend-announces-2026-tour/"
+  },
+  {
+    "artist": "Currents",
+    "date": "2026-11-02",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://www.bandsintown.com/a/214683-currents"
+  },
+  {
+    "artist": "Korn",
+    "date": "2026-11-08",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-03-20",
+    "url": "https://www.ticketmaster.nl/artist/korn-tickets/3404"
+  },
+  {
+    "artist": "Architects",
+    "date": "2026-11-08",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-03-20",
+    "url": "https://www.songkick.com/concerts/43103903-korn-at-ziggo-dome"
+  },
+  {
+    "artist": "Kodaline",
+    "date": "2026-11-24",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-03-27",
+    "url": "https://www.goticketshop.nl/kodaline-tickets/tivolivredenburg-utrecht-19271/"
+  },
+  {
+    "artist": "Kodaline",
+    "date": "2026-12-10",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-03-27",
+    "url": "https://www.ticketmaster.nl/artist/kodaline-tickets/904886"
+  },
+  {
+    "artist": "Nothing But Thieves",
+    "date": "2027-01-15",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-06-05",
+    "url": "https://www.livenation.nl/event/nothing-but-thieves-the-stray-dogs-world-tour-amsterdam-tickets-edp1676717"
+  },
+  {
+    "artist": "Nothing But Thieves",
+    "date": "2027-01-16",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-06-05",
+    "url": "https://www.livenation.nl/event/nothing-but-thieves-the-stray-dogs-world-tour-amsterdam-tickets-edp1676727"
+  },
+  {
+    "artist": "Lamb of God",
+    "date": "2027-02-07",
+    "city": "Amsterdam",
+    "venue": "AFAS Live",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": null,
+    "url": "https://www.afaslive.nl/en/agenda/five-finger-death-punch-2"
+  },
+  {
+    "artist": "Thirty Seconds to Mars",
+    "date": "2027-04-25",
+    "city": "Amsterdam",
+    "venue": "AFAS Live",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-04-17",
+    "url": "https://www.afaslive.nl/en/agenda/thirty-seconds-to-mars"
+  }
+]
