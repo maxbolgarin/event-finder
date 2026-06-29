@@ -1,0 +1,123 @@
+[
+  {
+    "artist": "Devin Towndend",
+    "date": "2026-09-29",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "2026-05-08",
+    "url": "https://www.podiuminfo.nl/concert/464576/Devin-Townsend-Metamorphosis-Solo-Tour/TivoliVredenburg/"
+  },
+  {
+    "artist": "Currents",
+    "date": "2026-11-02",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.tivolivredenburg.nl/agenda/67027875/erra-currents-02-11-2026"
+  },
+  {
+    "artist": "Korn",
+    "date": "2026-11-08",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.ticketmaster.nl/event/korn-tickets/1202331948"
+  },
+  {
+    "artist": "Architects",
+    "date": "2026-11-08",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.ticketmaster.nl/event/korn-tickets/1202331948"
+  },
+  {
+    "artist": "Kodaline",
+    "date": "2026-11-24",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.livenation.nl/event/kodaline-farewell-tour-utrecht-tickets-edp1665935"
+  },
+  {
+    "artist": "Bring Me The Horizon",
+    "date": "2026-12-09",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.ticketmaster.nl/artist/bring-me-the-horizon-tickets/34172"
+  },
+  {
+    "artist": "Kodaline",
+    "date": "2026-12-10",
+    "city": "Utrecht",
+    "venue": "TivoliVredenburg",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "",
+    "url": "https://www.livenation.nl/en/event/kodaline-farewell-tour-utrecht-tickets-edp1662379"
+  },
+  {
+    "artist": "Nothing But Thieves",
+    "date": "2027-01-15",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "2026-06-05",
+    "url": "https://www.livenation.nl/event/nothing-but-thieves-the-stray-dogs-world-tour-amsterdam-tickets-edp1676717"
+  },
+  {
+    "artist": "Nothing But Thieves",
+    "date": "2027-01-16",
+    "city": "Amsterdam",
+    "venue": "Ziggo Dome",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "2026-06-05",
+    "url": "https://www.livenation.nl/event/nothing-but-thieves-the-stray-dogs-world-tour-amsterdam-tickets-edp1676727"
+  },
+  {
+    "artist": "Lamb of God",
+    "date": "2027-02-07",
+    "city": "Amsterdam",
+    "venue": "AFAS Live",
+    "country": "Netherlands",
+    "event_type": "Gig",
+    "status": "On sale",
+    "on_sale": "2026-05-08",
+    "url": "https://www.livenation.nl/en/event/five-finger-death-punch-20th-anniversary-world-tour-amsterdam-tickets-edp1670914"
+  },
+  {
+    "artist": "Thirty Seconds To Mars",
+    "date": "2027-04-25",
+    "city": "Amsterdam",
+    "venue": "AFAS Live",
+    "country": "Netherlands",
+    "event_type": "Solo",
+    "status": "On sale",
+    "on_sale": "2026-04-17",
+    "url": "https://www.afaslive.nl/en/agenda/thirty-seconds-to-mars"
+  }
+]
