@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Scratch output from concert-watcher runs
+events.json
+festivals.json
