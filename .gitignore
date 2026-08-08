@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Scheduled-task run artifacts (regenerated each run, not source)
+events.json
+festivals.json
