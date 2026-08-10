@@ -219,3 +219,6 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Transient scraped-events payload written by scheduled watcher runs
+events.json
