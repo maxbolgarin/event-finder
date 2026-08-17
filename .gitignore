@@ -217,5 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Scheduled-task scratch output (regenerated each run; source of truth is the Sheet)
+events.json
+festivals.json
+
 # Google Sheets Account Key
 key.json
