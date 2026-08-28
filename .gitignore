@@ -147,6 +147,10 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# Scheduled-task scratch data (per-run search output, not source)
+/events.json
+/festivals.json
+
 # Environments
 .env
 .envrc
