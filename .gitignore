@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Transient scheduled-task scratch data
+events.json
+festivals.json
