@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+
+# Transient run data for the scheduled watcher tasks (already pushed to the sheet)
+events.json
+festivals.json
