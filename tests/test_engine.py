@@ -261,6 +261,24 @@ def test_baseline_records_everything_without_alerting(state, wl):
     assert eng2.alerts == [] and state.shows["paramore-2027-10-05"].verified
 
 
+def test_old_tracker_rows_start_unconfirmed(state, wl):
+    from tracker.sheets import shows_table
+    eng = Engine(state, wl, at("2026-09-27T09:00"), origin="legacy", baseline=True)
+    eng.ingest({"shows": [{"artist": "Tom Odell", "date": "2026-11-03", "venue": "Ziggo Dome",
+                           "url": "https://www.ticketmaster.nl/artist/tom-odell-tickets/912725"}]})
+    show = state.shows["tom-odell-2026-11-03"]
+    assert not show.verified and "new|tom-odell-2026-11-03" in state.sent     # known, but doubtful
+    row = shows_table(state, at("2026-09-27T09:00").date())[1]
+    assert row[4] == "Announced (unconfirmed)" and row[-2] == "no"
+
+
+def test_sale_label_does_not_repeat_itself():
+    from tracker.model import Sale
+    assert Sale("registration", name="Registration (closed)").label() == "Registration (closed)"
+    assert Sale("presale", name="Live Nation presale").label() == "Presale (Live Nation presale)"
+    assert Sale("presale", name="presale").label() == "Presale"
+
+
 def test_reminders(runner):
     runner.run("2026-09-20T09:00", {"shows": [muse(sales=[{"type": "presale", "start": "2026-10-01T10:00"}]),
                                               muse("2026-11-30", sales=[{"type": "presale", "start": "2026-10-01T10:00"}])]})

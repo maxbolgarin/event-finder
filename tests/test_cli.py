@@ -120,3 +120,5 @@ def test_remind_and_manual_controls(env, capsys):
     env("dismiss", "muse-2026-11-29", "--reason", "stale page")
     muse = FileStore(str(env.path / "state.json")).load().shows["muse-2026-11-29"]
     assert muse.dismissed == "stale page" and muse.evidence == ["ticketmaster.nl"]
+    env("unconfirm", "oasis-2027-07-16")
+    assert not FileStore(str(env.path / "state.json")).load().shows["oasis-2027-07-16"].verified

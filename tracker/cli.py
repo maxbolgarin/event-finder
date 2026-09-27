@@ -422,7 +422,8 @@ def main(argv=None):
     bs.add_argument("--force", action="store_true")
 
     for name, help_ in (("dismiss", "mark a known show as bogus"), ("mute", "stop alerts for a show"),
-                        ("unmute", "resume alerts for a show")):
+                        ("unmute", "resume alerts for a show"),
+                        ("unconfirm", "mark a known show as doubtful (the researcher re-checks it)")):
         c = sub.add_parser(name, help=help_)
         c.add_argument("id")
         if name == "dismiss":
@@ -457,6 +458,8 @@ def main(argv=None):
         _edit_show(ctx, lambda s: setattr(s, "muted", True))
     elif args.cmd == "unmute":
         _edit_show(ctx, lambda s: setattr(s, "muted", False))
+    elif args.cmd == "unconfirm":
+        _edit_show(ctx, lambda s: setattr(s, "verified", False))
     elif args.cmd == "test-telegram":
         cmd_test_telegram(ctx)
 
