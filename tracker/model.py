@@ -132,6 +132,7 @@ class Show:
     origin: str = ""                      # agent | seed | legacy | ticketmaster
     verified: bool = True                 # backed by a trusted (non-resale) source
     dismissed: str = ""                   # reason, when judged bogus
+    evidence: list[str] = field(default_factory=list)   # source domains already weighed at dismissal
     muted: bool = False
     pending_status: str = ""              # a step back in status awaiting a 2nd report
     pending_since: str = ""

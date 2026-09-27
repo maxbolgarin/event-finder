@@ -451,7 +451,8 @@ def main(argv=None):
     elif args.cmd == "bootstrap":
         cmd_bootstrap(ctx)
     elif args.cmd == "dismiss":
-        _edit_show(ctx, lambda s: setattr(s, "dismissed", args.reason))
+        from .engine import dismiss_show
+        _edit_show(ctx, lambda s: dismiss_show(s, args.reason, ctx.now.date().isoformat()))
     elif args.cmd == "mute":
         _edit_show(ctx, lambda s: setattr(s, "muted", True))
     elif args.cmd == "unmute":
