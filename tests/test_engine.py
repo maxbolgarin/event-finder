@@ -193,6 +193,24 @@ def test_dismissed_show_stays_quiet(runner):
     assert r.alerts == [] and runner.state.shows["paramore-2027-10-05"].dismissed
 
 
+def test_dismissal_survives_the_same_stale_page(runner):
+    stale = "https://www.pinkpop.nl/line-up/twenty-one-pilots/"
+    report = {"artist": "Twenty One Pilots", "date": "2027-06-19", "festival": "Pinkpop", "url": stale}
+    runner.run("2026-09-27T09:00", {"shows": [report]})
+    runner.run("2026-09-27T10:00", {"dismiss": [{"id": "twenty-one-pilots-2027-06-19",
+                                                 "reason": "2027 line-up not announced; stale 2026 page"}]})
+    show = runner.state.shows["twenty-one-pilots-2027-06-19"]
+    assert show.evidence == ["pinkpop.nl"]
+    # the researcher keeps finding the same stale page (another path on the same site) ...
+    other_path = {**report, "id": show.id, "url": "https://www.pinkpop.nl/en/line-up/twenty-one-pilots/"}
+    assert runner.run("2026-09-28T09:00", {"shows": [other_path]}).alerts == []
+    assert show.dismissed
+    # ... only an independent source brings it back (quietly: it was announced before)
+    confirmed = {**report, "id": show.id, "source": "https://festileaks.com/2026/11/pinkpop-2027-eerste-namen/"}
+    assert runner.run("2026-11-20T09:00", {"shows": [confirmed]}).alerts == []
+    assert not show.dismissed and "festileaks.com" in show.history[-1]
+
+
 def test_festival_partial_date_gets_refined_silently(runner):
     r = runner.run("2026-11-20T09:00", {"shows": [{"artist": "Architects", "date": "2027",
                                                    "festival": "Pinkpop 2027", "url": "https://www.pinkpop.nl/x"}]})
@@ -214,6 +232,19 @@ def test_news_is_deduplicated_by_url_and_meaning(runner):
     assert runner.run("2026-09-28T09:00", {"news": [reworded]}).alerts == []
     spam = {**item, "url": "https://radioheadtour2027.com/", "text": "Radiohead Amsterdam 2027 confirmed"}
     assert runner.run("2026-09-28T09:00", {"news": [spam]}).alerts == []
+
+
+def test_informational_news_is_remembered_not_sent(runner):
+    recap = {"artist": "Oasis", "type": "other", "url": "https://help.ticketmaster.com/hc/en-us/articles/1",
+             "text": "No general sale for the NL shows: only fans with a unique code from the ballot can buy"}
+    assert runner.run("2026-09-27T09:00", {"news": [recap]}).alerts == []
+    assert [n["artist"] for n in runner.state.news] == ["Oasis"]            # shown in the brief as known
+    assert runner.run("2026-09-28T09:00", {"news": [recap]}).alerts == []
+    assert len(runner.state.news) == 1
+    tour = {"artist": "Oasis", "type": "tour", "url": "https://oasisinet.com/news/2028",
+            "text": "Oasis announce 2028 European stadium tour; Amsterdam date to be confirmed"}
+    alerts = runner.run("2026-09-29T09:00", {"news": [tour]}).alerts
+    assert [a.kind for a in alerts] == ["news"] and alerts[0].loud
 
 
 def test_baseline_records_everything_without_alerting(state, wl):

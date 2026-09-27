@@ -191,6 +191,17 @@ def _jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b) if a and b else 0.0
 
 
+def known_domains(show: Show) -> set[str]:
+    return {domain(u) for u in (show.url, show.source) if u} | set(show.evidence)
+
+
+def dismiss_show(show: Show, reason: str, day: str) -> None:
+    """Mark a show as bogus, remembering which sites were already weighed."""
+    show.dismissed = reason
+    show.evidence = sorted(known_domains(show) - {""})
+    show.log(day, f"dismissed: {reason}")
+
+
 def parse_ts(ts: str) -> datetime | None:
     try:
         dt = datetime.fromisoformat(str(ts).split(" ")[0])
@@ -367,9 +378,13 @@ class Engine:
         show.last_seen = self.day
         is_new = show.id in self._new_alerts
         quiet = show.dismissed or show.muted or not show.verified
-        if show.dismissed and f.trusted and how in ("id", "artist-date"):
-            show.dismissed = ""
-            show.log(self.day, "restored (reported again by a trusted source)")
+        if show.dismissed and how in ("id", "artist-date"):
+            # only evidence from a site not weighed before counts: a stale page that
+            # fooled the researcher once (an old line-up page) must not undo a dismissal
+            fresh = {domain(u) for u in (f.url, f.source) if is_trusted_url(u)} - known_domains(show)
+            if fresh:
+                show.dismissed = ""
+                show.log(self.day, f"restored (confirmed by {', '.join(sorted(fresh))})")
         for a in f.artists:
             if a not in show.artists:
                 show.artists.append(a)
@@ -553,8 +568,7 @@ class Engine:
             return
         reason = str(d.get("reason") or "") if isinstance(d, dict) else ""
         if not show.dismissed:
-            show.dismissed = reason or "judged bogus"
-            show.log(self.day, f"dismissed: {show.dismissed}")
+            dismiss_show(show, reason or "judged bogus", self.day)
             res.updated.append(sid)
 
     def _news(self, n, res: IngestResult):
@@ -572,12 +586,14 @@ class Engine:
         ntype = words(str(n.get("type") or ""))
         ntype = next((t for t in ("registration", "lottery", "presale", "tour") if t in ntype), "other")
         key = f"news|{name_key(names[0])}|{url_key(url)}"
-        if self._known(key) or self._similar_news(names[0], text):
+        if (self._known(key) or any(old.get("key") == key for old in self.st.news)
+                or self._similar_news(names[0], text)):
             return
         self.st.news.append({"date": self.day, "artist": names[0], "type": ntype,
                              "text": text, "url": url, "key": key})
-        self._emit(Alert("news", key, "", names[0], loud=ntype != "other",
-                         data={"type": ntype, "text": text, "url": url}))
+        if ntype == "other":
+            return          # informational only: remembered (so it isn't re-reported), never sent
+        self._emit(Alert("news", key, "", names[0], data={"type": ntype, "text": text, "url": url}))
 
     def _similar_news(self, artist: str, text: str) -> bool:
         cutoff = (self.today - timedelta(days=60)).isoformat()

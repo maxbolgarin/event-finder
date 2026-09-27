@@ -158,7 +158,7 @@ def build(state: State, wl: Watchlist, now: datetime, batch_size: int = 15,
 
     recent = [n for n in state.news if n.get("date", "") >= (today - timedelta(days=30)).isoformat()]
     if recent:
-        L += ["", "## News already sent in the last 30 days (don't repeat; report only real developments)"]
+        L += ["", "## Recent news, already known (don't repeat; report only real new developments)"]
         L += [f"- {n['date']} {n['artist']}: {n['text']}" for n in recent[-20:]]
     dismissed = [s for s in state.shows.values() if s.dismissed and not is_past(s.date, today)]
     if dismissed:
@@ -177,8 +177,10 @@ def build(state: State, wl: Watchlist, now: datetime, batch_size: int = 15,
           "- `sales[].type`: registration (sign-up / verified fan) | lottery (ballot / unique-code sale) | "
           "presale | general. Times are Amsterdam local: YYYY-MM-DDTHH:MM (date only if no time).",
           "- `url`: the official ticket/info page; `source`: where you read it. Real URLs only.",
-          "- `news`: actionable NL-relevant items that are not a dated NL show yet (tour announced "
-          "with NL date TBA, registration opened, ...). `type`: registration | lottery | presale | tour | other.",
+          "- `news`: NEW, actionable NL-relevant developments that are not a dated NL show yet (tour "
+          "announced with NL dates TBA, a registration or ballot opening, ...). Never restate what the "
+          "known-shows list already says. `type`: registration | lottery | presale | tour | other "
+          "('other' is only remembered, never sent).",
           "- `dismiss`: IDs of known shows that turned out to be wrong.",
           "", OUTPUT_EXAMPLE]
     meta = {"date": today.isoformat(), "hot": [n for n, _ in hot], "batch": batch}
