@@ -1,0 +1,46 @@
+name: tracker
+
+# Optional scheduled sender. Off until the repository variable TRACKER_SCHEDULE
+# is set to "on" (Settings -> Secrets and variables -> Actions -> Variables).
+#   - every 30 min: due reminders ("presale opens in 40 min"), the weekly digest,
+#     and delivery of alerts the Claude routine queued (TRACKER_DELIVERY=queue)
+#   - hourly: Ticketmaster poll for new NL shows and exact sale times
+#     (only when the TICKETMASTER_API_KEY secret exists)
+on:
+  schedule:
+    - cron: "7 * * * *"
+    - cron: "37 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: tracker-state
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: vars.TRACKER_SCHEDULE == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+      SHEET_ID: ${{ secrets.SHEET_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Ticketmaster poll (hourly)
+        if: github.event.schedule != '37 * * * *'
+        run: |
+          if [ -n "$TICKETMASTER_API_KEY" ]; then
+            python -m tracker poll-ticketmaster
+          else
+            echo "TICKETMASTER_API_KEY not set - skipping the Ticketmaster poll"
+          fi
+      - name: Reminders and queued alerts
+        run: python -m tracker remind

@@ -219,3 +219,7 @@ __marimo__/
 
 # Google Sheets Account Key
 key.json
+# NL tracker working files
+.tracker/
+brief.md
+findings.json
