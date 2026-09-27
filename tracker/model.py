@@ -98,9 +98,12 @@ class Sale:
 
     def label(self) -> str:
         base = SALE_LABELS.get(self.kind, self.kind.title())
-        if self.name and words(self.name) not in (words(base), self.kind):
-            return f"{base} ({self.name})"
-        return base
+        name = words(self.name)
+        if not name or name in (words(base), self.kind):
+            return base
+        if name.startswith(self.kind) or name.startswith(words(base)):
+            return self.name              # "Registration (closed)", not "Registration (Registration (closed))"
+        return f"{base} ({self.name})"
 
     def when(self, today=None) -> str:
         if self.start and self.end:

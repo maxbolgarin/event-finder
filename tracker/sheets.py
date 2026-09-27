@@ -113,9 +113,13 @@ def shows_table(state: State, today) -> list[list[str]]:
     for s in shows:
         windows = "; ".join(f"{w.label()}: {w.when(today)}" for w in s.sales)
         place = s.festival + (f" ({s.venue})" if s.venue and s.festival else "") if s.festival else s.venue
+        status = STATUS_LABELS.get(s.status, s.status)
+        if not s.verified:
+            status += " (unconfirmed)"
+        if s.muted:
+            status += " (muted)"
         rows.append([
-            s.date if is_full_date(s.date) else fmt_date(s.date), s.title(), place, s.city,
-            STATUS_LABELS.get(s.status, s.status) + (" (muted)" if s.muted else ""), windows,
+            s.date if is_full_date(s.date) else fmt_date(s.date), s.title(), place, s.city, status, windows,
             s.url, s.source if s.source != s.url else "", s.first_seen, s.updated,
             "yes" if s.verified else "no", s.id,
         ])

@@ -355,7 +355,10 @@ class Engine:
         return res
 
     def _create(self, f: Finding, res: IngestResult) -> Show:
-        trusted = (f.trusted or self.origin in ("seed", "ticketmaster")) and not f.doubtful
+        # the old tracker invented shows (wrong years, old pages) even behind real ticket
+        # links, so its rows only count once the researcher confirms them
+        trusted = ((f.trusted or self.origin in ("seed", "ticketmaster"))
+                   and not f.doubtful and self.origin != "legacy")
         show = Show(
             id=self._new_id(f), artists=list(f.artists), date=f.date, venue=f.venue, city=f.city,
             festival=f.festival, lineup=f.lineup, status=f.status or "announced",
