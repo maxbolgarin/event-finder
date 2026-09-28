@@ -67,20 +67,26 @@ def test_first_run_is_a_silent_baseline_then_alerts(env, capsys):
     env("ingest", env.write("f3.json", second), now="2026-09-29T18:00")
     assert "nothing new today" in capsys.readouterr().out
 
+    env("brief", "--out", str(env.path / "brief.md"), now="2026-09-30T09:00")
+    lines = (env.path / "brief.md").read_text().splitlines()
+    (muse,) = [line for line in lines if line.startswith("- muse-2026-11-29 |")]
+    assert muse.endswith("| no ticket page yet")                             # only an artist page
+
 
 def test_failed_telegram_queues_and_retries(env, capsys, monkeypatch):
     env("ingest", env.write("f1.json", FINDINGS))            # baseline
     capsys.readouterr()
 
     class Broken:
-        def send(self, html, silent=False):
+        def send(self, html, silent=False, preview=""):
             raise TelegramError("api.telegram.org is blocked by this environment's network policy")
 
     class Working:
-        sent = []
+        sent, previews = [], []
 
-        def send(self, html, silent=False):
+        def send(self, html, silent=False, preview=""):
             self.sent.append(html)
+            self.previews.append(preview)
 
     monkeypatch.setattr(cli.Telegram, "from_env", classmethod(lambda cls: Broken()))
     new = {"checked": ["Radiohead"], "shows": [{"artist": "Radiohead", "date": "2027-05-01",
@@ -98,6 +104,7 @@ def test_failed_telegram_queues_and_retries(env, capsys, monkeypatch):
     env("flush", now="2026-09-29T11:00")
     st = FileStore(str(env.path / "state.json")).load()
     assert st.pending == [] and len(Working.sent) == 1 and "Radiohead" in Working.sent[0]
+    assert Working.previews == ["https://www.radiohead.com/x"]
     assert st.sent["new|radiohead-2027-05-01"].endswith("telegram")
 
 

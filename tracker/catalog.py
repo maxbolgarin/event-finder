@@ -285,6 +285,31 @@ def is_trusted_url(url: str) -> bool:
     return not any(p.search(host) for p in _UNTRUSTED_PATTERNS)
 
 
+_EVENT_PAGE = re.compile(r"/(event|events|evenement|evenementen|agenda|programma|program|concert|concerten|"
+                         r"show|shows)/[^/?#]+|edp\d+", re.I)
+_OVERVIEW_PAGE = re.compile(r"/artist/|-tickets-adp\d+|/artists?/\d+|/a/\d+", re.I)
+
+
+def url_rank(url: str) -> int:
+    """How useful a link is for buying: 3 = the show's own event / ticket page
+    (Live Nation, Ticketmaster, venue agenda), 2 = official site, news or line-up
+    page, 1 = an artist's overview page (proves no specific show), 0 = untrusted."""
+    if not is_trusted_url(url):
+        return 0
+    path = urlparse(url).path
+    if _OVERVIEW_PAGE.search(path):
+        return 1
+    if _EVENT_PAGE.search(path):
+        return 3
+    return 2
+
+
+def best_url(*urls: str) -> str:
+    """The most useful of the given links (earlier ones win ties)."""
+    ranked = [(url_rank(u), -i, u) for i, u in enumerate(urls) if u]
+    return max(ranked)[2] if ranked and max(ranked)[0] > 0 else ""
+
+
 def artist_aliases(name: str) -> list[str]:
     key = name_key(name)
     for canon, aliases in ARTIST_ALIASES.items():

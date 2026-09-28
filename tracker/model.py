@@ -19,6 +19,13 @@ SALE_LABELS = {
     "presale": "Presale",
     "general": "General sale",
 }
+# words showing that a seller's name for a window already says what kind it is
+_KIND_WORDS = {
+    "registration": ("registration", "register", "sign up", "signup", "verified fan", "aanmeld", "inschrijv"),
+    "lottery": ("lottery", "ballot", "loting", "draw"),
+    "presale": ("presale", "pre sale"),
+    "general": ("general", "public", "sale", "verkoop"),
+}
 STATUS_LABELS = {
     "announced": "Announced",
     "registration": "Registration open",
@@ -101,8 +108,8 @@ class Sale:
         name = words(self.name)
         if not name or name in (words(base), self.kind):
             return base
-        if name.startswith(self.kind) or name.startswith(words(base)):
-            return self.name              # "Registration (closed)", not "Registration (Registration (closed))"
+        if any(k in name for k in _KIND_WORDS.get(self.kind, (self.kind,))):
+            return self.name              # "Mastercard presale", not "Presale (Mastercard presale)"
         return f"{base} ({self.name})"
 
     def when(self, today=None) -> str:
@@ -128,6 +135,7 @@ class Show:
     sales: list[Sale] = field(default_factory=list)
     url: str = ""                         # best ticket / info link
     source: str = ""                      # where the latest info came from
+    price: str = ""                       # e.g. "from €72.93"
     note: str = ""
     first_seen: str = ""
     updated: str = ""                     # last material change (date)

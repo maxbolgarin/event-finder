@@ -17,7 +17,7 @@ SHOWS_TAB = "NL Shows"
 ALERTS_TAB = "NL Alerts"
 LEGACY_TABS = ("Schedule NL", "Schedule")
 
-SHOWS_HEADERS = ["Date", "Artists", "Venue / Festival", "City", "Status", "Ticket windows",
+SHOWS_HEADERS = ["Date", "Artists", "Venue / Festival", "City", "Status", "Ticket windows", "Price",
                  "Tickets / info", "Source", "First seen", "Updated", "Verified", "ID"]
 ALERTS_HEADERS = ["Sent (Amsterdam)", "Delivery", "Kind", "Artist", "Message", "Keys"]
 _HEADER_CELLS = {"artist", "artists", "name", "band"}
@@ -120,7 +120,7 @@ def shows_table(state: State, today) -> list[list[str]]:
             status += " (muted)"
         rows.append([
             s.date if is_full_date(s.date) else fmt_date(s.date), s.title(), place, s.city, status, windows,
-            s.url, s.source if s.source != s.url else "", s.first_seen, s.updated,
+            s.price, s.url, s.source if s.source != s.url else "", s.first_seen, s.updated,
             "yes" if s.verified else "no", s.id,
         ])
     return rows
@@ -128,16 +128,19 @@ def shows_table(state: State, today) -> list[list[str]]:
 
 def write_shows(ss, state: State, today) -> None:
     rows = shows_table(state, today)
+    last = chr(64 + len(SHOWS_HEADERS))
     ws, created = _ws(ss, SHOWS_TAB, SHOWS_HEADERS)
     if ws.row_count < len(rows):
         ws.add_rows(len(rows) - ws.row_count)
-    ws.update(range_name=f"A1:{chr(64 + len(SHOWS_HEADERS))}{len(rows)}", values=rows,
-              value_input_option="RAW")
+    if ws.col_count < len(SHOWS_HEADERS):          # a tab written before a column was added
+        ws.add_cols(len(SHOWS_HEADERS) - ws.col_count)
+        created = True
+    ws.update(range_name=f"A1:{last}{len(rows)}", values=rows, value_input_option="RAW")
     if ws.row_count > len(rows):
-        ws.batch_clear([f"A{len(rows) + 1}:{chr(64 + len(SHOWS_HEADERS))}{ws.row_count}"])
+        ws.batch_clear([f"A{len(rows) + 1}:{last}{ws.row_count}"])
     if created:
         ws.freeze(rows=1)
-        ws.format("A1:L1", {"textFormat": {"bold": True}})
+        ws.format(f"A1:{last}1", {"textFormat": {"bold": True}})
 
 
 def log_alerts(ss, entries: list[list[str]]) -> None:

@@ -12,8 +12,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
-from .catalog import (canonical_festival, canonical_venue, domain, festival_city, festival_key,
-                      find_festival, is_trusted_url, venue_city, venue_key)
+from .catalog import (best_url, canonical_festival, canonical_venue, domain, festival_city,
+                      festival_key, find_festival, is_trusted_url, url_rank, venue_city, venue_key)
 from .model import (SALE_KINDS, TERMINAL_STATUSES, Sale, Show, State, norm_sale_kind,
                     norm_status, status_rank)
 from .normalize import (TZ, date_year, has_time, is_full_date, is_past, name_key, parse_date,
@@ -64,6 +64,10 @@ class Finding:
     note: str = ""
     doubtful: bool = False        # seed/import flag: keep, but ask the researcher to confirm
     status_text: str = ""         # the status as reported, before normalisation
+    price: str = ""
+
+    def best_link(self) -> str:
+        return best_url(self.url, self.source, *[w.url for w in self.sales]) or self.url
 
     @property
     def trusted(self) -> bool:
@@ -175,6 +179,7 @@ def parse_finding(raw: dict, wl: Watchlist, today) -> tuple[Finding | None, str]
         note=str(raw.get("note") or raw.get("notes") or "").strip(),
         doubtful=bool(raw.get("unverified")),
         status_text=str(raw.get("status") or ""),
+        price=str(raw.get("price") or "").strip(),
     ), ""
 
 
@@ -362,7 +367,8 @@ class Engine:
         show = Show(
             id=self._new_id(f), artists=list(f.artists), date=f.date, venue=f.venue, city=f.city,
             festival=f.festival, lineup=f.lineup, status=f.status or "announced",
-            url=f.url, source=f.source, note=f.note, first_seen=self.day, updated=self.day,
+            url=f.best_link(), source=f.source, note=f.note, price=f.price,
+            first_seen=self.day, updated=self.day,
             last_seen=self.day, origin=self.origin, verified=trusted,
         )
         for w in f.sales:
@@ -412,8 +418,10 @@ class Engine:
         show.city = show.city or f.city
         show.festival = show.festival or f.festival
         show.lineup = show.lineup or f.lineup
-        if is_trusted_url(f.url) and not is_trusted_url(show.url):
-            show.url = f.url
+        better = f.best_link()
+        if url_rank(better) > url_rank(show.url):      # e.g. artist page -> the show's ticket page
+            show.url = better
+        show.price = f.price or show.price
         show.source = f.source or show.source
         show.note = f.note or show.note
         for w in f.sales:
@@ -462,8 +470,9 @@ class Engine:
 
         def fill(s: Sale):
             s.end = s.end or w.end
-            s.name = s.name or w.name
-            s.url = s.url or w.url
+            s.name = w.name or s.name          # the latest report names the sale best
+            if url_rank(w.url) > url_rank(s.url):
+                s.url = w.url
 
         for s in same:
             if day and s.start[:10] == day:

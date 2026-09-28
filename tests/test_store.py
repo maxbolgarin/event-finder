@@ -129,3 +129,44 @@ def test_sheet_store_detects_concurrent_writer():
     sb.sent["only-b"] = "1"
     b.save(sb)
     assert {"only-a", "only-b"} <= set(SheetStore(ss).load().sent)
+
+
+class GridSheet:
+    """Just enough of a gspread worksheet for the 'NL Shows' view."""
+
+    def __init__(self, rows, cols):
+        self.row_count, self.col_count, self.rows, self.bold = rows, cols, {}, ""
+
+    def update(self, range_name, values, value_input_option=None):
+        end = range_name.split(":")[1]
+        assert ord(end[0]) - 64 <= self.col_count and int(end[1:]) <= self.row_count, "write beyond grid"
+        for i, row in enumerate(values, start=1):
+            self.rows[i] = row
+
+    def batch_clear(self, ranges):
+        pass
+
+    def add_rows(self, n):
+        self.row_count += n
+
+    def add_cols(self, n):
+        self.col_count += n
+
+    def freeze(self, rows):
+        pass
+
+    def format(self, rng, fmt):
+        self.bold = rng
+
+
+def test_shows_view_grows_a_tab_written_before_the_price_column():
+    from datetime import date
+
+    from tracker.sheets import SHOWS_HEADERS, write_shows
+    ss = FakeSpreadsheet()
+    st = _state(3)
+    st.shows["s0"].price = "from €72.93"
+    ws = ss.sheets["NL Shows"] = GridSheet(rows=2, cols=12)
+    write_shows(ss, st, date(2026, 9, 28))
+    assert ws.col_count == len(SHOWS_HEADERS) == 13 and ws.bold == "A1:M1"
+    assert ws.rows[1] == SHOWS_HEADERS and ws.rows[2][SHOWS_HEADERS.index("Price")] == "from €72.93"
