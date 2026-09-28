@@ -91,7 +91,7 @@ def deliver(ctx: Ctx, st: State, messages: list[Message]) -> dict:
         return {"sent": 0, "printed": 0, "queued": 0, "handoff": 0, "error": ""}
     for m in messages:
         st.pending.append({"created": ctx.stamp(), "html": m.html, "keys": m.keys, "loud": m.loud,
-                           "kinds": m.kinds, "artist": m.artist})
+                           "kinds": m.kinds, "artist": m.artist, "preview": m.preview})
     if messages:
         ctx.store.save(st)
     return flush(ctx, st)
@@ -107,7 +107,7 @@ def flush(ctx: Ctx, st: State) -> dict:
         if p.get("keys") and all(k in st.sent for k in p["keys"]):
             continue
         msg = Message(p["html"], p.get("keys", []), p.get("loud", True), p.get("kinds", []),
-                      p.get("artist", ""))
+                      p.get("artist", ""), p.get("preview", ""))
         if handoff:
             remaining.append(p)
             continue
@@ -120,7 +120,7 @@ def flush(ctx: Ctx, st: State) -> dict:
             continue
         else:
             try:
-                ctx.telegram.send(msg.html, silent=not msg.loud)
+                ctx.telegram.send(msg.html, silent=not msg.loud, preview=msg.preview)
                 sent.append(msg)
                 via = "telegram"
                 time.sleep(0.4)

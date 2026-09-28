@@ -1,7 +1,7 @@
 import pytest
 
-from tracker.catalog import (canonical_festival, festival_key, find_festival, is_trusted_url,
-                             venue_key)
+from tracker.catalog import (best_url, canonical_festival, festival_key, find_festival, is_trusted_url,
+                             url_rank, venue_key)
 from tracker.normalize import fmt_when, is_past, name_key, parse_date, parse_when
 from tracker.watchlist import Watchlist
 
@@ -111,6 +111,28 @@ def test_festival_names_canonicalise():
 ])
 def test_trusted_urls(url, ok):
     assert is_trusted_url(url) is ok
+
+
+@pytest.mark.parametrize("url,rank", [
+    ("https://www.livenation.nl/en/event/bullet-for-my-valentine-social-apacolypse-2027-amsterdam-tickets-edp1699791", 3),
+    ("https://www.ticketmaster.nl/event/bullet-for-my-valentine-tickets/1234567", 3),
+    ("https://www.afaslive.nl/agenda/bullet-for-my-valentine", 3),
+    ("https://www.oasisinet.com/register", 2),
+    ("https://kink.nl/nieuws/x", 2),
+    ("https://www.afaslive.nl/agenda", 2),
+    ("https://www.ticketmaster.nl/artist/bullet-for-my-valentine-tickets/28188", 1),
+    ("https://www.ticketswap.nl/event/x", 0),
+    ("", 0),
+])
+def test_url_rank(url, rank):
+    assert url_rank(url) == rank
+
+
+def test_best_url_prefers_the_shows_own_page():
+    artist_page = "https://www.ticketmaster.nl/artist/bullet-for-my-valentine-tickets/28188"
+    assert best_url(artist_page, "https://www.livenation.nl/en/event/bullet-for-my-valentine-social-apacolypse-2027-amsterdam-tickets-edp1699791") == "https://www.livenation.nl/en/event/bullet-for-my-valentine-social-apacolypse-2027-amsterdam-tickets-edp1699791"
+    assert best_url(artist_page, "https://www.viagogo.com/x") == artist_page
+    assert best_url("https://www.viagogo.com/x", "") == ""
 
 
 def test_name_key_folds_accents_quotes_and_the():

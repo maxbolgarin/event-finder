@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from .catalog import FESTIVALS
+from .catalog import FESTIVALS, url_rank
 from .model import STATUS_LABELS, State
 from .normalize import date_sort_key, fmt_date, fmt_when, is_past, when_dt
 from .watchlist import Watchlist
@@ -36,11 +36,13 @@ OUTPUT_EXAMPLE = """{
   "checked": ["Muse", "Placebo"],
   "shows": [
     {"id": "muse-2026-11-29", "artist": "Muse", "date": "2026-11-29",
-     "venue": "Ziggo Dome", "city": "Amsterdam", "status": "presale",
+     "venue": "Ziggo Dome", "city": "Amsterdam", "status": "presale", "price": "from €59.50",
      "sales": [
-       {"type": "presale", "name": "Muse fan presale", "start": "2026-10-01T10:00"},
+       {"type": "presale", "name": "Mastercard presale (waiting room 09:45)", "start": "2026-10-01T10:00",
+        "url": "https://www.livenation.nl/en/event/muse-...-amsterdam-tickets-edp1234567"},
        {"type": "general", "start": "2026-10-03T10:00"}],
-     "url": "https://www.ticketmaster.nl/...", "source": "https://www.3voor12.nl/..."},
+     "url": "https://www.livenation.nl/en/event/muse-...-amsterdam-tickets-edp1234567",
+     "source": "https://www.3voor12.nl/..."},
     {"artist": "Architects", "lineup": "Architects + Loathe", "date": "2027-06-19",
      "festival": "Pinkpop", "venue": "Megaland", "city": "Landgraaf", "status": "on_sale",
      "url": "https://www.pinkpop.nl/...", "source": "https://www.pinkpop.nl/..."}
@@ -146,13 +148,16 @@ def build(state: State, wl: Watchlist, now: datetime, batch_size: int = 15,
     L += ["", "## Known upcoming NL shows",
           "Re-report a known show only with its ID; the script works out what changed.",
           "`?` = unverified (stored by the old tracker / from a weak source): confirm it with a "
-          "trusted URL or dismiss it.",
+          "trusted URL or dismiss it. `no ticket page yet` = when you research that artist, find "
+          "the show's own event / ticket page.",
           "ID | date | bill | venue, city | status | ticket windows"]
     for s in upcoming:
         windows = "; ".join(f"{w.label()}: {w.when(today)}" for w in s.sales) or "-"
         mark = "" if s.verified else "? "
+        settled = s.festival or s.status in ("sold_out", "cancelled") or url_rank(s.url) == 3
+        page = "" if settled else " | no ticket page yet"
         L.append(f"- {mark}{s.id} | {fmt_date(s.date)} | {s.title()} | {s.place() or '?'} | "
-                 f"{STATUS_LABELS.get(s.status, s.status)} | {windows}")
+                 f"{STATUS_LABELS.get(s.status, s.status)} | {windows}{page}")
     if not upcoming:
         L.append("- (none yet)")
 
@@ -176,7 +181,14 @@ def build(state: State, wl: Watchlist, now: datetime, batch_size: int = 15,
           "- `status`: announced | registration | presale | on_sale | low | sold_out | cancelled | postponed",
           "- `sales[].type`: registration (sign-up / verified fan) | lottery (ballot / unique-code sale) | "
           "presale | general. Times are Amsterdam local: YYYY-MM-DDTHH:MM (date only if no time).",
-          "- `url`: the official ticket/info page; `source`: where you read it. Real URLs only.",
+          "- `url`: the show's OWN ticket / event page, where its presale and sale happen "
+          "(livenation.nl/.../event/...-edp..., ticketmaster.nl/event/..., the venue's agenda page) - "
+          "never an artist overview page (ticketmaster.nl/artist/...). `source`: where you read it. "
+          "Real URLs only.",
+          "- `sales[].name`: the window exactly as the seller calls it (\"Mastercard presale\", "
+          "\"Verified Fan registration\"), plus a waiting-room time if given; `sales[].url`: where that "
+          "window happens (the event page, the sign-up form).",
+          "- `price`: the cheapest listed ticket price, e.g. \"from €72.93\".",
           "- `news`: NEW, actionable NL-relevant developments that are not a dated NL show yet (tour "
           "announced with NL dates TBA, a registration or ballot opening, ...). Never restate what the "
           "known-shows list already says. `type`: registration | lottery | presale | tour | other "

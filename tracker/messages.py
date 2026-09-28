@@ -7,12 +7,14 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from .catalog import festival_key, venue_key
+from .catalog import best_url, domain, festival_key, url_rank, venue_key
 from .engine import Alert
 from .model import STATUS_LABELS, Sale, Show, State
 from .normalize import date_year, fmt_date, fmt_when, has_time, when_dt
 
 SALE_ICONS = {"registration": "📝", "lottery": "🎲", "presale": "🔐", "general": "🎫"}
+_ACTIONS = {"registration": "Register", "lottery": "Enter the ballot", "presale": "Presale",
+            "general": "Tickets"}
 _PRIORITY = ["cancelled", "postponed", "date", "restock", "live", "sale", "lineup", "low", "sold_out"]
 
 
@@ -23,6 +25,7 @@ class Message:
     loud: bool = True
     kinds: list[str] = field(default_factory=list)
     artist: str = ""
+    preview: str = ""             # the link Telegram previews (the ticket page); "" = no preview
 
     @property
     def text(self) -> str:
@@ -60,13 +63,35 @@ def _sale_line(w: Sale, today: date) -> str:
     return f"{SALE_ICONS.get(w.kind, '🎟')} {esc(w.label())}: {esc(w.when(today))}"
 
 
-def _links(show: Show, extra_url: str = "") -> str:
-    parts, seen = [], set()
-    for url, label in ((extra_url, "Tickets / info"), (show.url, "Tickets / info"), (show.source, "Source")):
+def buy_link(show: Show, window: Sale | None = None) -> str:
+    """The one link to press: the window's own page (a sign-up form, the presale
+    page), else the show's event / ticket page - never an artist overview when
+    anything better is known."""
+    if window and window.url:
+        need = 2 if window.kind in ("registration", "lottery") else max(2, url_rank(show.url))
+        if url_rank(window.url) >= need:
+            return window.url
+    return best_url(show.url, *(w.url for w in show.sales), show.source) or show.url
+
+
+def _links(show: Show, window: Sale | None = None) -> str:
+    primary = buy_link(show, window)
+    if not primary.startswith("http"):
+        return ""
+    if window and primary == window.url:
+        label = _ACTIONS.get(window.kind, "Tickets")
+    else:
+        label = "Tickets" if url_rank(primary) == 3 else "Info"
+    parts, seen = [link(primary, f"{label} — {domain(primary)}")], {primary}
+    for url, name in ((show.url, "Tickets" if url_rank(show.url) == 3 else "Info"), (show.source, "Source")):
         if url and url.startswith("http") and url not in seen:
             seen.add(url)
-            parts.append(link(url, label if not parts else "Source"))
-    return "🔗 " + " · ".join(parts) if parts else ""
+            parts.append(link(url, name))
+    return "👉 " + " · ".join(parts)
+
+
+def _price_line(show: Show) -> str:
+    return f"💶 {esc(show.price)}" if show.price else ""
 
 
 def _where_line(show: Show) -> str:
@@ -105,8 +130,14 @@ def _render_new(shows: list[Show], today: date) -> str:
         status = f"ℹ️ {esc(STATUS_LABELS.get(s0.status, s0.status))}"
     elif not sale_lines:
         status = "ℹ️ Ticket sale date not announced yet"
-    return _join([head, _date_line(shows), _where_line(s0), *sale_lines, status,
+    return _join([head, _date_line(shows), _where_line(s0), *sale_lines, _price_line(s0), status,
                   f"📝 {esc(s0.note)}" if s0.note else "", _links(s0)])
+
+
+def _focus(alerts: list[Alert]) -> Sale | None:
+    """The ticket window a change message is about (its link goes first)."""
+    new_sales = [Sale(**a.data["sale"]) for a in alerts if a.kind == "sale"]
+    return next((w for w in new_sales if w.url), new_sales[0] if new_sales else None)
 
 
 def _render_show_changes(show: Show, alerts: list[Alert], now: datetime) -> str:
@@ -147,13 +178,14 @@ def _render_show_changes(show: Show, alerts: list[Alert], now: datetime) -> str:
     lines.append(_date_line([show]) + (f" · {esc(show.place())}" if show.place() else ""))
     for w in new_sales:
         lines.append(_sale_line(w, today))
+    if top.kind in ("sale", "live", "restock", "date"):
+        lines.append(_price_line(show))
     for a in alerts[1:]:
         if a.kind in ("cancelled", "postponed", "sold_out", "low", "restock"):
             lines.append(f"ℹ️ {esc(STATUS_LABELS.get(a.data.get('new', a.kind), a.kind))}")
         elif a.kind == "live" and top.kind != "live":
             lines.append("🟢 Sale is live now")
-    sale_url = next((w.url for w in new_sales if w.url), "")
-    lines.append(_links(show, sale_url))
+    lines.append(_links(show, _focus(alerts)))
     return _join(lines)
 
 
@@ -175,7 +207,7 @@ def _render_remind(shows: list[Show], alert: Alert, today: date, now: datetime) 
         head = f"⏰ {name} — {kind} opens <b>{esc(_rel_day(at, today))}</b>"
     return _join([head, f"🎟 {esc(w.name)}" if w.name else "",
                   _date_line(shows) + (f" · {esc(show.place())}" if show.place() else ""),
-                  _links(show, w.url)])
+                  _price_line(show), _links(show, w)])
 
 
 def _render_news(alert: Alert) -> str:
@@ -219,13 +251,15 @@ def render(alerts: list[Alert], state: State, now: datetime) -> list[Message]:
     for group in sorted(new_groups.values(), key=lambda g: min(state.shows[a.show_id].date for a in g)):
         shows = sorted((state.shows[a.show_id] for a in group), key=lambda s: s.date)
         keys = [k for a in group for k in a.keys]
-        messages.append(Message(_render_new(shows, today), keys, True, ["new"], shows[0].headliner))
+        messages.append(Message(_render_new(shows, today), keys, True, ["new"], shows[0].headliner,
+                                buy_link(shows[0])))
 
     for sid, group in by_show.items():
         show = state.shows[sid]
         keys = [k for a in group for k in a.keys]
         messages.append(Message(_render_show_changes(show, group, now), keys,
-                                any(a.loud for a in group), sorted({a.kind for a in group}), show.headliner))
+                                any(a.loud for a in group), sorted({a.kind for a in group}), show.headliner,
+                                buy_link(show, _focus(group))))
 
     reminders: dict[tuple, list[Alert]] = {}
     for a in singles:        # one reminder for all nights sharing the same window
@@ -237,16 +271,18 @@ def render(alerts: list[Alert], state: State, now: datetime) -> list[Message]:
     for group in reminders.values():
         shows = sorted((state.shows[a.show_id] for a in group), key=lambda s: s.date)
         messages.append(Message(_render_remind(shows, group[0], today, now),
-                                [k for a in group for k in a.keys], True, ["remind"], shows[0].headliner))
+                                [k for a in group for k in a.keys], True, ["remind"], shows[0].headliner,
+                                buy_link(shows[0], Sale(**group[0].data["sale"]))))
 
     for a in singles:
         if a.kind == "remind":
             continue
+        preview = ""
         if a.kind == "news":
-            body = _render_news(a)
+            body, preview = _render_news(a), a.data.get("url", "")
         elif a.kind == "digest":
             body = _render_digest(a, today)
         else:
             continue
-        messages.append(Message(body, a.keys, a.loud, [a.kind], a.artist))
+        messages.append(Message(body, a.keys, a.loud, [a.kind], a.artist, preview))
     return messages

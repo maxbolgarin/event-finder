@@ -3,6 +3,7 @@ from tracker.engine import Engine, prune
 from .conftest import at, kinds
 
 TM_MUSE = "https://www.ticketmaster.nl/artist/muse-tickets/26326"
+LN_MUSE = "https://www.livenation.nl/en/event/muse-2026-amsterdam-tickets-edp1234567"
 
 
 def muse(date="2026-11-29", **extra):
@@ -82,6 +83,26 @@ def test_registration_and_lottery_windows(runner):
         "sales": [{"type": "ballot / unique code sale", "start": "2026-09-25", "end": "2026-09-27"}]}]})
     assert kinds(r.alerts) == ["sale"]
     assert r.alerts[0].data["sale"]["kind"] == "lottery"
+
+
+def test_the_shows_own_page_replaces_an_artist_page_silently(runner):
+    runner.run("2026-09-27T08:00", {"shows": [muse(sales=[
+        {"type": "presale", "name": "Ticketmaster presale", "start": "2026-09-28T10:00"}])]})
+    r = runner.run("2026-09-27T09:00", {"shows": [muse(url=LN_MUSE, price="from €59.50", sales=[
+        {"type": "presale", "name": "Mastercard presale", "start": "2026-09-28T10:00", "url": LN_MUSE}])]})
+    assert r.alerts == []                                  # better details, not news
+    (show,) = runner.state.shows.values()
+    assert show.url == LN_MUSE and show.price == "from €59.50"
+    assert (show.sales[0].name, show.sales[0].url) == ("Mastercard presale", LN_MUSE)
+    runner.run("2026-09-27T10:00", {"shows": [muse(sales=[
+        {"type": "presale", "start": "2026-09-28T10:00", "url": TM_MUSE}])]})
+    assert show.url == LN_MUSE and show.sales[0].url == LN_MUSE     # an overview page never wins
+
+
+def test_new_show_links_its_own_page_even_if_only_a_window_has_it(runner):
+    runner.run("2026-09-27T09:00", {"shows": [muse(sales=[
+        {"type": "presale", "start": "2026-10-01T10:00", "url": LN_MUSE}])]})
+    assert runner.state.shows["muse-2026-11-29"].url == LN_MUSE
 
 
 def test_corrected_window_date_is_not_a_second_presale(runner):
@@ -275,7 +296,9 @@ def test_old_tracker_rows_start_unconfirmed(state, wl):
 def test_sale_label_does_not_repeat_itself():
     from tracker.model import Sale
     assert Sale("registration", name="Registration (closed)").label() == "Registration (closed)"
-    assert Sale("presale", name="Live Nation presale").label() == "Presale (Live Nation presale)"
+    assert Sale("presale", name="Live Nation presale").label() == "Live Nation presale"
+    assert Sale("presale", name="Mastercard Credit Preferred").label() == "Presale (Mastercard Credit Preferred)"
+    assert Sale("lottery", name="Ballot").label() == "Ballot"
     assert Sale("presale", name="presale").label() == "Presale"
 
 

@@ -89,6 +89,15 @@ def _status(event: dict, sales: list[dict], now: datetime) -> str:
     return ""                # "offsale" is ambiguous (sold out or sales closed)
 
 
+def _price(event: dict) -> str:
+    ranges = [r for r in event.get("priceRanges") or [] if isinstance(r.get("min"), (int, float))]
+    if not ranges:
+        return ""
+    low = min(ranges, key=lambda r: r["min"])
+    currency = low.get("currency") or "EUR"
+    return f"from €{low['min']:.2f}" if currency == "EUR" else f"from {low['min']:.2f} {currency}"
+
+
 def event_to_finding(event: dict, wl: Watchlist, now: datetime) -> dict | None:
     emb = event.get("_embedded") or {}
     names = [a.get("name", "") for a in emb.get("attractions", [])]
@@ -110,7 +119,8 @@ def event_to_finding(event: dict, wl: Watchlist, now: datetime) -> dict | None:
         s = parse_when(p.get("startDateTime", ""))
         if s:
             sales.append({"type": p.get("name") or "presale", "name": p.get("name", ""), "start": s,
-                          "end": parse_when(p.get("endDateTime", ""))})
+                          "end": parse_when(p.get("endDateTime", "")),
+                          **({"url": p["url"]} if p.get("url") else {})})
     public = sales_raw.get("public") or {}
     if public.get("startDateTime") and not public.get("startTBD") and not public.get("startTBA"):
         sales.append({"type": "general", "start": parse_when(public["startDateTime"])})
@@ -119,7 +129,7 @@ def event_to_finding(event: dict, wl: Watchlist, now: datetime) -> dict | None:
         "artist": artists[0], "artists": artists, "lineup": lineup, "date": date,
         "venue": venue.get("name", ""), "city": (venue.get("city") or {}).get("name", ""),
         "country": "Netherlands", "status": _status(event, sales, now), "sales": sales,
-        "url": event.get("url", ""), "source": event.get("url", ""),
+        "url": event.get("url", ""), "source": event.get("url", ""), "price": _price(event),
     }
 
 

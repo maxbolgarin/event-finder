@@ -14,6 +14,11 @@ Work in this single agent: no subagents, no workflows.
        "<artist> tour 2027 Europe dates", "<artist> <venue> tickets" (for known shows),
        "<artist> registration presale" / "<artist> ballot", and festival names they might play.
    - the brief's sweep searches and festival line-up checks.
+   - the show's OWN ticket page for every new show, and for known shows of the artists
+       you research that are marked "no ticket page yet": "<artist> <venue> <month year>
+       livenation", "<artist> <venue> ticketmaster event". Live Nation / Ticketmaster event
+       pages name every presale ("Mastercard presale", waiting-room time) and show the
+       price - report that page as the show's url, never an artist overview page.
    Look hardest for: new NL shows and extra dates, registration / sign-up windows,
    lotteries, presale and general-sale dates WITH times, sold-outs, cancellations,
    upgrades to bigger venues. Include shows whose tickets are not on sale yet.

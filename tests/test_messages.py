@@ -4,6 +4,7 @@ from tracker.messages import plain, render
 from .conftest import at
 
 TM = "https://www.ticketmaster.nl/artist/muse-tickets/26326"
+LN = "https://www.livenation.nl/en/event/muse-2026-amsterdam-tickets-edp1234567"
 
 
 def _render(runner, when, findings, reminders=False):
@@ -21,11 +22,39 @@ def test_multi_night_new_show_is_one_message(runner):
     text = msgs[0].text
     assert "🆕 Muse — new NL shows" in text
     assert "Sun 29 Nov 2026 · Mon 30 Nov 2026" in text
-    assert "Presale (Muse fan presale): Thu 1 Oct 10:00" in text
-    assert text.count("Presale") == 1                     # shared window listed once
+    assert "🔐 Muse fan presale: Thu 1 Oct 10:00" in text
+    assert text.count("Muse fan presale") == 1            # shared window listed once
     assert "General sale: Sat 3 Oct 10:00" in text
     assert TM in text
     assert set(msgs[0].keys) >= {"new|muse-2026-11-29", "new|muse-2026-11-30"}
+
+
+def test_alerts_link_the_presale_page_first(runner):
+    runner.run("2026-09-20T09:00", {"shows": [{"artist": "Muse", "date": "2026-11-29", "venue": "Ziggo Dome",
+                                               "url": TM}]})
+    (msg,) = _render(runner, "2026-09-27T09:00", {"shows": [{
+        "artist": "Muse", "date": "2026-11-29", "venue": "Ziggo Dome", "url": TM, "price": "from €59.50",
+        "source": "https://kink.nl/nieuws/muse",
+        "sales": [{"type": "presale", "name": "Mastercard presale", "start": "2026-10-01T10:00", "url": LN}]}]})
+    lines = msg.text.splitlines()
+    assert lines[0] == "🔐 Muse — presale announced"
+    assert "🔐 Mastercard presale: Thu 1 Oct 10:00" in lines and "💶 from €59.50" in lines
+    assert lines[-1] == f"👉 Presale — livenation.nl: {LN} · Source: https://kink.nl/nieuws/muse"
+    assert msg.preview == LN
+
+    runner.remind("2026-09-30T12:00")                     # "opens tomorrow 10:00" was sent
+    eng = Engine(runner.state, runner.wl, at("2026-10-01T09:15"))
+    (msg,) = render(eng.reminders(), runner.state, at("2026-10-01T09:15"))
+    assert msg.text.splitlines()[0] == "🚨 Muse — presale opens in 45 min (10:00)"
+    assert f"👉 Presale — livenation.nl: {LN}" in msg.text and msg.preview == LN
+
+
+def test_new_show_prefers_the_event_page_over_an_artist_page(runner):
+    (msg,) = _render(runner, "2026-09-27T09:00", {"shows": [{
+        "artist": "Muse", "date": "2026-11-29", "venue": "Ziggo Dome", "url": TM, "source": LN}]})
+    assert msg.text.splitlines()[-1] == f"👉 Tickets — livenation.nl: {LN}"
+    assert runner.state.shows["muse-2026-11-29"].url == LN
+    assert msg.preview == LN
 
 
 def test_festival_message(runner):

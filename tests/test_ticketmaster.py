@@ -68,6 +68,15 @@ def test_event_to_finding_converts_times_and_windows():
     assert event_to_finding(event(attractions=("Museum Night",)), WL, at("2026-09-27T12:00")) is None
 
 
+def test_price_and_presale_page():
+    ev = event()
+    ev["priceRanges"] = [{"type": "standard", "currency": "EUR", "min": 72.93, "max": 99.5}]
+    ev["sales"]["presales"][0]["url"] = "https://www.ticketmaster.nl/event/Z1?presale=1"
+    f = event_to_finding(ev, WL, at("2026-09-27T12:00"))
+    assert f["price"] == "from €72.93" and f["sales"][0]["url"].endswith("presale=1")
+    assert event_to_finding(event(), WL, at("2026-09-27T12:00"))["price"] == ""
+
+
 def test_multi_attraction_event_keeps_the_bill():
     f = event_to_finding(event(attractions=("Korn", "Architects")), WL, at("2026-09-27T12:00"))
     assert f["artists"] == ["Korn", "Architects"] and f["lineup"] == "Korn + Architects"
@@ -137,7 +146,7 @@ def test_poll_command_and_queue_handoff(cli_env, capsys, monkeypatch):
     sent = []
     monkeypatch.delenv("TRACKER_DELIVERY")
     monkeypatch.setattr(cli.Telegram, "from_env", classmethod(lambda cls: type(
-        "T", (), {"send": lambda self, html, silent=False: sent.append(html)})()))
+        "T", (), {"send": lambda self, html, silent=False, preview="": sent.append(html)})()))
     cli_env("remind", "--no-digest", now="2026-09-29T12:30")          # the scheduled sender
     st = FileStore(str(cli_env.path / "state.json")).load()
     assert st.pending == [] and len(sent) == 1 and "Mon 30 Nov 2026" in sent[0]

@@ -36,14 +36,15 @@ class Telegram:
         """requests' errors embed the URL, i.e. the bot token - never print it."""
         return str(text).replace(self.token, "<token>") if self.token else str(text)
 
-    def send(self, html_text: str, silent: bool = False) -> None:
+    def send(self, html_text: str, silent: bool = False, preview: str = "") -> None:
+        """`preview`: the link to show a preview card for (the ticket page), '' for none."""
         if len(html_text) > _MAX_LEN:
             html_text = plain(html_text)[:_MAX_LEN - 1] + "…"
             payload_mode = None
         else:
             payload_mode = "HTML"
-        payload = {"chat_id": self.chat_id, "text": html_text, "disable_web_page_preview": True,
-                   "disable_notification": bool(silent)}
+        payload = {"chat_id": self.chat_id, "text": html_text, "disable_notification": bool(silent),
+                   "link_preview_options": {"url": preview} if preview else {"is_disabled": True}}
         if payload_mode:
             payload["parse_mode"] = payload_mode
         last = "unknown error"
@@ -70,12 +71,17 @@ class Telegram:
                 self._sleep(min(float((body.get("parameters") or {}).get("retry_after", 5)), 30))
                 last = f"rate limited: {desc}"
                 continue
-            if resp.status_code == 400 and "parse_mode" in payload:
-                # malformed HTML must never block an alert: resend as plain text
-                payload = {k: v for k, v in payload.items() if k != "parse_mode"}
-                payload["text"] = plain(html_text)
-                last = f"bad HTML: {desc}"
-                continue
+            if resp.status_code == 400:
+                # a link Telegram can't preview or malformed HTML must never block an alert
+                if payload["link_preview_options"].get("url") and "entit" not in desc.lower():
+                    payload["link_preview_options"] = {"is_disabled": True}
+                    last = f"bad preview link: {desc}"
+                    continue
+                if "parse_mode" in payload:
+                    payload = {k: v for k, v in payload.items() if k != "parse_mode"}
+                    payload["text"] = plain(html_text)
+                    last = f"bad HTML: {desc}"
+                    continue
             if resp.status_code >= 500:
                 last = f"HTTP {resp.status_code}: {desc}"
                 self._sleep(2 ** attempt)
